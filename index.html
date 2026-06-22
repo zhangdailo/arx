@@ -1381,6 +1381,11 @@
     <button class="tab-btn" data-tab="wallets">🏷 Wallets</button>
     <button class="tab-btn" data-tab="blast" style="color:var(--violet);font-weight:700">📢 Blast</button>
     <button class="tab-btn" data-tab="paraplanner" style="color:#34d399;font-weight:700">🧭 Paraplanner</button>
+    <!-- God-mode only — injected visible by JS below -->
+    <button class="tab-btn" data-tab="citadel" id="citadelTabBtn"
+            style="display:none;color:#c9a84c;font-weight:700;border-left:1px solid rgba(201,168,76,.25);margin-left:4px">
+      🏰 Citadel
+    </button>
   </nav>
 </header>
 
@@ -2542,6 +2547,52 @@
   <!-- ═══════════════════════════════════════════════════════ -->
   <section class="tab-panel" id="tab-paraplanner">
     <div id="pp-root" style="display:flex;min-height:calc(100vh - 120px);gap:0"></div>
+  </section>
+
+  <!-- ══ CITADEL — God-mode operator panel ══════════════════════════════ -->
+  <section class="tab-panel" id="tab-citadel">
+    <div id="citadelPanel" style="padding:28px 24px;max-width:1100px;margin:0 auto">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px">
+        <div style="font-size:22px;letter-spacing:.12em;color:#c9a84c;font-weight:700">🏰 CITADEL COMMAND</div>
+        <div style="font-size:10px;letter-spacing:.2em;color:rgba(201,168,76,.45);padding:3px 8px;border:1px solid rgba(201,168,76,.25)">SUPERHUMAN ACCESS ONLY</div>
+        <div style="margin-left:auto;font-size:10px;color:rgba(201,168,76,.5);letter-spacing:.12em" id="citadelNote">
+          ⚠ Data shown is from this browser only
+        </div>
+        <button onclick="renderCitadelPanel()" style="background:transparent;border:1px solid rgba(201,168,76,.3);color:rgba(201,168,76,.7);padding:4px 12px;cursor:pointer;font-size:10px;letter-spacing:.15em">↻ REFRESH</button>
+      </div>
+
+      <!-- Summary cards row -->
+      <div id="citadelCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:28px"></div>
+
+      <!-- User table -->
+      <div style="font-size:10px;letter-spacing:.2em;color:rgba(201,168,76,.5);margin-bottom:10px">OPERATOR ACTIVITY LOG</div>
+      <div style="overflow-x:auto">
+        <table id="citadelTbl" style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="border-bottom:1px solid rgba(201,168,76,.2)">
+              <th style="text-align:left;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">OPERATOR</th>
+              <th style="text-align:left;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">ACCESS LEVEL</th>
+              <th style="text-align:left;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">LAST LOGIN</th>
+              <th style="text-align:right;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">TOTAL LOGINS</th>
+              <th style="text-align:right;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">LOGIN STREAK</th>
+              <th style="text-align:right;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">AVG SESSION</th>
+              <th style="text-align:center;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">PEAK HOUR</th>
+              <th style="text-align:center;padding:8px 12px;color:rgba(201,168,76,.6);font-weight:600;letter-spacing:.1em;font-size:10px">ACTIVITY (30D)</th>
+            </tr>
+          </thead>
+          <tbody id="citadelTblBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Login timeline for selected user -->
+      <div id="citadelTimeline" style="margin-top:28px;display:none">
+        <div style="font-size:10px;letter-spacing:.2em;color:rgba(201,168,76,.5);margin-bottom:10px">LOGIN HISTORY — <span id="citadelTimelineUid"></span></div>
+        <div id="citadelTimelineRows" style="font-size:11px;color:#9a9aaf;line-height:1.9;max-height:260px;overflow-y:auto;border-left:1px solid rgba(201,168,76,.15);padding-left:14px"></div>
+      </div>
+
+    </div>
   </section>
 
 </main>
@@ -9126,5 +9177,315 @@ function initParaplanner() {
     </div>
   </div>
 </div>
+
+<script>
+// ── Supabase config (same values as login.html — fill in after setup) ──
+const SUPABASE_URL_ARX = 'https://howzroiceixtfimrdmjz.supabase.co';
+const SUPABASE_KEY_ARX = 'sb_publishable_EtYHLj-z2cxh1U5kOyAZCg_f7Cx9gga';
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// ARX CITADEL — God-mode operator analytics
+// ═══════════════════════════════════════════════════════
+
+// All known operators (mirrors login.html USERS keys + access levels)
+const CITADEL_OPERATORS = {
+  'dailo':      { level:'SUPERHUMAN GOD', color:'#c9a84c' },
+  'dailozhang': { level:'SUPERHUMAN GOD', color:'#c9a84c' },
+  'kelly':      { level:'OPERATOR',       color:'#60a5fa' },
+  'zephan':     { level:'OPERATOR',       color:'#60a5fa' },
+};
+
+// ── Session duration tracking ─────────────────────────────
+// Record session start when index.html loads; write end on pagehide
+(function(){
+  const uid = window.ARX_USER && window.ARX_USER.uid;
+  if (!uid) return;
+  const sessionStart = Date.now();
+
+  function closeSession(){
+    try {
+      const key = 'arx_log_' + uid;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const rec = JSON.parse(raw);
+      if (!Array.isArray(rec.logins) || !rec.logins.length) return;
+      // Find the most recent login without a sessionEnd
+      const last = rec.logins[rec.logins.length - 1];
+      if (!last.sessionEnd) {
+        last.sessionEnd = Date.now();
+        localStorage.setItem(key, JSON.stringify(rec));
+        const sbId = sessionStorage.getItem('arx_supabase_login_id');
+        if (sbId) patchSessionEndSupabase(sbId, Date.now());
+      }
+    } catch(e) {}
+  }
+
+  window.addEventListener('pagehide', closeSession);
+  window.addEventListener('beforeunload', closeSession);
+  // Also save periodically (every 2 min) in case browser doesn't fire pagehide
+  setInterval(closeSession, 120000);
+})();
+
+// ── Show citadel tab only to god-mode users ────────────────
+(function(){
+  if (window.ARX_USER && window.ARX_USER.level === 'SUPERHUMAN GOD ACCESS') {
+    const btn = document.getElementById('citadelTabBtn');
+    if (btn) btn.style.display = '';
+  }
+})();
+
+// ── Helpers ────────────────────────────────────────────────
+function fmtTs(ts){
+  if (!ts) return '—';
+  const d = new Date(ts);
+  const now = new Date();
+  const diff = Date.now() - ts;
+  if (diff < 60000)    return 'Just now';
+  if (diff < 3600000)  return Math.floor(diff/60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  // Same year — omit year
+  const opts = { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' };
+  if (d.getFullYear() !== now.getFullYear()) opts.year = 'numeric';
+  return d.toLocaleString('en-US', opts);
+}
+
+function fmtDuration(ms){
+  if (!ms || ms < 0) return '—';
+  const mins = Math.round(ms / 60000);
+  if (mins < 1)  return '<1m';
+  if (mins < 60) return mins + 'm';
+  const h = Math.floor(mins/60), m = mins%60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function calcStreak(logins){
+  if (!logins || !logins.length) return 0;
+  const days = new Set(logins.map(l => {
+    const d = new Date(l.ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }));
+  const sorted = [...days].sort().reverse();
+  if (!sorted.length) return 0;
+  let streak = 1, prev = new Date(sorted[0]);
+  for (let i = 1; i < sorted.length; i++){
+    const cur = new Date(sorted[i]);
+    const gap = (prev - cur) / 86400000;
+    if (gap <= 1.5) { streak++; prev = cur; } else break;
+  }
+  return streak;
+}
+
+function calcPeakHour(logins){
+  if (!logins || !logins.length) return null;
+  const counts = new Array(24).fill(0);
+  logins.forEach(l => counts[new Date(l.ts).getHours()]++);
+  const max = Math.max(...counts);
+  if (max === 0) return null;
+  const hr = counts.indexOf(max);
+  const suffix = hr < 12 ? 'am' : 'pm';
+  const disp   = hr === 0 ? 12 : hr > 12 ? hr - 12 : hr;
+  return `${disp}${suffix}`;
+}
+
+function calcAvgSession(logins){
+  const withDuration = logins.filter(l => l.sessionEnd && l.sessionEnd > l.ts);
+  if (!withDuration.length) return null;
+  const avg = withDuration.reduce((s,l) => s + (l.sessionEnd - l.ts), 0) / withDuration.length;
+  return avg;
+}
+
+// 30-day activity sparkline (7 columns = Mon-Sun style heatmap; actually 30 days in 5 rows of 6)
+function buildActivitySvg(logins){
+  const DAY_MS = 86400000;
+  const now = Date.now();
+  const counts = {};
+  logins.forEach(l => {
+    const dayKey = Math.floor((now - l.ts) / DAY_MS);
+    if (dayKey < 30) counts[dayKey] = (counts[dayKey]||0) + 1;
+  });
+  const max = Math.max(1, ...Object.values(counts));
+  // Build 30 cells (d=0 is today, d=29 oldest)
+  const W=7, H=5, S=8, G=2;
+  const svgW = W*(S+G), svgH = H*(S+G);
+  let cells='';
+  for(let i=0;i<30;i++){
+    const col=i%W, row=Math.floor(i/W);
+    const day = 29-i; // oldest first
+    const c   = counts[day] || 0;
+    const alpha = c===0 ? 0.06 : 0.15 + 0.75*(c/max);
+    const fill  = c===0 ? `rgba(255,255,255,${alpha})` : `rgba(201,168,76,${alpha})`;
+    cells += `<rect x="${col*(S+G)}" y="${row*(S+G)}" width="${S}" height="${S}" rx="1" fill="${fill}"><title>${c} login${c!==1?'s':''}, ${day===0?'today':day+'d ago'}</title></rect>`;
+  }
+  return `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}" style="display:block">${cells}</svg>`;
+}
+
+async function patchSessionEndSupabase(loginId, endTs) {
+  if (!loginId || !SUPABASE_URL_ARX || SUPABASE_URL_ARX.startsWith('YOUR_')) return;
+  try {
+    await fetch(`${SUPABASE_URL_ARX}/rest/v1/arx_logins?id=eq.${loginId}`, {
+      method: 'PATCH',
+      headers: { 'apikey': SUPABASE_KEY_ARX, 'Authorization': `Bearer ${SUPABASE_KEY_ARX}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_end: endTs }),
+    });
+  } catch(e) {}
+}
+
+async function fetchCitadelDataSupabase() {
+  if (!SUPABASE_URL_ARX || SUPABASE_URL_ARX.startsWith('YOUR_')) return null;
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL_ARX}/rest/v1/arx_logins?select=id,uid,ts,session_end&order=ts.desc&limit=2000`,
+      { headers: { 'apikey': SUPABASE_KEY_ARX, 'Authorization': `Bearer ${SUPABASE_KEY_ARX}` } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    // Group by uid → {uid: {logins: [{ts, sessionEnd}]}}
+    const grouped = {};
+    rows.forEach(r => {
+      if (!grouped[r.uid]) grouped[r.uid] = { logins: [] };
+      grouped[r.uid].logins.push({ ts: r.ts, sessionEnd: r.session_end });
+    });
+    return grouped;
+  } catch(e) { return null; }
+}
+
+// ── Main render ────────────────────────────────────────────
+async function renderCitadelPanel(){
+  const tBody  = document.getElementById('citadelTblBody');
+  const cards  = document.getElementById('citadelCards');
+  if (!tBody || !cards) return;
+
+  tBody.innerHTML = '';
+  cards.innerHTML = '';
+
+  let totalUsers=0, totalLogins=0, activeToday=0;
+  const now = Date.now();
+  const rows = [];
+
+  // Try Supabase first; fall back to localStorage
+  const sbData = await fetchCitadelDataSupabase();
+  const usingSupabase = !!sbData;
+  const noteEl = document.getElementById('citadelNote');
+  if (noteEl) noteEl.textContent = usingSupabase ? '✓ Live cross-device data (Supabase)' : '⚠ Data shown is from this browser only';
+
+  // Load data for each known operator
+  Object.keys(CITADEL_OPERATORS).forEach(uid => {
+    const meta = CITADEL_OPERATORS[uid];
+    let logins = [];
+    if (usingSupabase && sbData[uid]) {
+      logins = sbData[uid].logins;
+    } else {
+      const raw = localStorage.getItem('arx_log_' + uid);
+      const rec = raw ? (() => { try{return JSON.parse(raw);}catch{return null;} })() : null;
+      logins = rec && Array.isArray(rec.logins) ? rec.logins : [];
+    }
+
+    const lastLogin   = logins.length ? logins[logins.length-1].ts : null;
+    const totalCount  = logins.length;
+    const streak      = calcStreak(logins);
+    const peakHour    = calcPeakHour(logins);
+    const avgSession  = calcAvgSession(logins);
+    // firstSeen: use earliest login ts if available (works for both Supabase and localStorage paths)
+    const firstSeen   = logins.length ? Math.min(...logins.map(l => l.ts)) : null;
+    const loginToday  = logins.some(l => now - l.ts < 86400000);
+
+    totalUsers++;
+    totalLogins += totalCount;
+    if (loginToday) activeToday++;
+
+    rows.push({ uid, meta, lastLogin, totalCount, streak, peakHour, avgSession, firstSeen, logins, loginToday });
+  });
+
+  // Sort: god-mode first, then by last login desc
+  rows.sort((a,b) => {
+    if (a.meta.level !== b.meta.level) return a.meta.level === 'SUPERHUMAN GOD' ? -1 : 1;
+    return (b.lastLogin||0) - (a.lastLogin||0);
+  });
+
+  // Summary cards
+  const cardData = [
+    { label:'OPERATORS', value: totalUsers, sub:'registered' },
+    { label:'ACTIVE TODAY', value: activeToday, sub:'logged in <24h' },
+    { label:'TOTAL LOGINS', value: totalLogins, sub:'all time' },
+    { label:'SESSION', value: window.ARX_USER ? window.ARX_USER.uid.toUpperCase() : '—', sub:'current operator' },
+  ];
+  cardData.forEach(cd => {
+    const div = document.createElement('div');
+    div.style.cssText = 'background:rgba(201,168,76,.04);border:1px solid rgba(201,168,76,.18);padding:16px 18px';
+    div.innerHTML = `<div style="font-size:9px;letter-spacing:.2em;color:rgba(201,168,76,.45);margin-bottom:6px">${cd.label}</div>
+      <div style="font-size:22px;font-weight:700;color:#c9a84c;letter-spacing:.04em">${cd.value}</div>
+      <div style="font-size:10px;color:rgba(201,168,76,.4);margin-top:3px">${cd.sub}</div>`;
+    cards.appendChild(div);
+  });
+
+  // Table rows
+  rows.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .15s';
+    tr.onmouseenter = () => tr.style.background='rgba(201,168,76,.04)';
+    tr.onmouseleave = () => tr.style.background='';
+    tr.onclick = () => showCitadelTimeline(r);
+
+    const neverSeen = r.totalCount === 0;
+    const levelBadge = r.meta.level === 'SUPERHUMAN GOD'
+      ? `<span style="font-size:8px;padding:2px 6px;background:rgba(201,168,76,.12);color:#c9a84c;border:1px solid rgba(201,168,76,.3);letter-spacing:.1em">⬡ GOD</span>`
+      : `<span style="font-size:8px;padding:2px 6px;background:rgba(96,165,250,.08);color:#60a5fa;border:1px solid rgba(96,165,250,.2);letter-spacing:.1em">OPERATOR</span>`;
+
+    tr.innerHTML = `
+      <td style="padding:10px 12px;color:#e8e0cc;font-weight:600;letter-spacing:.06em">
+        ${r.loginToday ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#34d399;margin-right:7px;vertical-align:middle"></span>' : '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.1);margin-right:7px;vertical-align:middle"></span>'}
+        ${r.uid.toUpperCase()}
+      </td>
+      <td style="padding:10px 12px">${levelBadge}</td>
+      <td style="padding:10px 12px;color:${neverSeen?'rgba(255,255,255,.2)':'#9a9aaf'}">${neverSeen ? 'Never' : fmtTs(r.lastLogin)}</td>
+      <td style="padding:10px 12px;text-align:right;color:${neverSeen?'rgba(255,255,255,.2)':'#e8e0cc'};font-weight:${r.totalCount>0?600:400}">${r.totalCount || '—'}</td>
+      <td style="padding:10px 12px;text-align:right;color:${r.streak>0?'#f59e0b':'rgba(255,255,255,.2)'}">
+        ${r.streak > 0 ? r.streak + (r.streak===1?' day':' days') : '—'}
+      </td>
+      <td style="padding:10px 12px;text-align:right;color:#9a9aaf">${r.avgSession ? fmtDuration(r.avgSession) : '—'}</td>
+      <td style="padding:10px 12px;text-align:center;color:#9a9aaf">${r.peakHour || '—'}</td>
+      <td style="padding:10px 12px;text-align:center">${buildActivitySvg(r.logins)}</td>
+    `;
+    tBody.appendChild(tr);
+  });
+}
+
+function showCitadelTimeline(r){
+  const tl    = document.getElementById('citadelTimeline');
+  const uidEl = document.getElementById('citadelTimelineUid');
+  const rows  = document.getElementById('citadelTimelineRows');
+  if (!tl || !rows) return;
+
+  uidEl.textContent = r.uid.toUpperCase();
+  tl.style.display = 'block';
+
+  if (!r.logins.length){
+    rows.innerHTML = '<span style="color:rgba(255,255,255,.2)">No logins recorded on this device.</span>';
+    return;
+  }
+
+  // Reverse-chronological
+  const list = [...r.logins].reverse().slice(0, 50);
+  rows.innerHTML = list.map((l, i) => {
+    const d = new Date(l.ts);
+    const dateStr = d.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const dur = l.sessionEnd ? ` · session ${fmtDuration(l.sessionEnd - l.ts)}` : '';
+    const badge = i === 0 ? ' <span style="font-size:9px;color:#34d399;letter-spacing:.1em">● LAST</span>' : '';
+    return `<div style="padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <span style="color:rgba(201,168,76,.6);font-family:monospace">${String(r.logins.length - i).padStart(3,'0')}</span>
+      <span style="margin:0 10px;color:#e8e0cc">${dateStr}</span>
+      <span style="color:rgba(255,255,255,.35)">${dur}</span>${badge}
+    </div>`;
+  }).join('');
+}
+
+// ── Wire into tab click ────────────────────────────────────
+// (append to existing tab click handler by re-querying citadel btn)
+document.getElementById('citadelTabBtn').addEventListener('click', () => {
+  setTimeout(renderCitadelPanel, 50);
+});
+</script>
 </body>
 </html>
