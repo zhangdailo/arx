@@ -2531,6 +2531,36 @@
         ⚠️ <strong>Tip:</strong> Load Trader Radar first (toggle Live Data) to get richer position signals. Without it, Blast uses Hyperliquid market data only.
       </div>
 
+      <!-- ── News Watch ── -->
+      <div style="margin-bottom:28px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700;color:#38bdf8;letter-spacing:-0.01em">📰 News Watch</div>
+          <div id="newsWatchTs" style="font-size:10px;color:var(--muted);flex:1"></div>
+          <button onclick="generateNewsWatch()" id="newsWatchRefreshBtn"
+            style="padding:6px 14px;border-radius:8px;border:1px solid rgba(56,189,248,0.35);background:rgba(56,189,248,0.08);color:#38bdf8;font-size:11px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all 0.15s">
+            🔄 Refresh
+          </button>
+          <button onclick="copyNewsWatch()" id="newsWatchCopyBtn"
+            style="padding:6px 14px;border-radius:8px;border:1px solid rgba(56,189,248,0.35);background:rgba(56,189,248,0.08);color:#38bdf8;font-size:11px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;transition:all 0.15s">
+            📋 Copy
+          </button>
+        </div>
+        <div id="newsWatchCard"
+          style="background:rgba(255,255,255,0.03);border:1px solid rgba(56,189,248,0.2);border-radius:14px;padding:16px 20px;position:relative;overflow:hidden;min-height:80px">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0ea5e9,#38bdf8,#7dd3fc);border-radius:14px 14px 0 0"></div>
+          <div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">
+            Hit <strong style="color:#38bdf8">🔄 Refresh</strong> or generate a signal to load today's news briefing.
+          </div>
+        </div>
+      </div>
+
+      <!-- divider -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.09em">⚡ Signal</div>
+        <div style="flex:1;height:1px;background:var(--border)"></div>
+      </div>
+
       <!-- Current / Latest blast card -->
       <div id="blastCurrentCard" style="margin-bottom:24px">
         <div style="text-align:center;padding:48px 24px;border:1px dashed var(--border);border-radius:14px;color:var(--muted);font-size:13px">
@@ -8551,6 +8581,230 @@ function formatBlastText(entry, sig, scoreResult) {
   return lines.join('\n');
 }
 
+// ═══════════════════════════════════════════════════════════
+// NEWS WATCH  — Zeitgeist briefing card
+// ═══════════════════════════════════════════════════════════
+
+let _newsWatchText  = '';
+let _newsWatchTsVal = 0;
+
+const NW_CRYPTO = /bitcoin|btc|ethereum|eth|crypto|blockchain|defi|nft|altcoin|solana|sol|doge|bnb|staking|hyperliquid|onchain|layer.?2|uniswap|arbitrum|base\s|polygon|avalanche|cardano|ripple|xrp|chainlink|binance|coinbase|bybit|okx|kraken|perpetual|perp\s/i;
+const NW_MACRO  = /federal reserve|fed\s|interest rate|inflation|cpi\s|gdp\s|recession|nasdaq|s&p|sp500|stocks|equity|equities|dow\s|bond\s|treasury|dollar|dxy|commodit|crude oil|gold\s|yen|euro\s|fx\s|ecb|boj|payroll|unemployment|earnings\s/i;
+const NW_REG    = /\bsec\b|\bcftc\b|regulat|banned|approved|approval|etf\s|etf\b|ruling|senate|congress|lawsuit|court|compliance|licen[cs]|fca\b|mas\b/i;
+
+function _nwCat(text) {
+  if (NW_REG.test(text))    return 'REG';
+  if (NW_MACRO.test(text))  return 'MACRO';
+  if (NW_CRYPTO.test(text)) return 'CRYPTO';
+  return 'CRYPTO'; // default bucket
+}
+
+async function generateNewsWatch() {
+  const card  = document.getElementById('newsWatchCard');
+  const tsEl  = document.getElementById('newsWatchTs');
+  const rBtn  = document.getElementById('newsWatchRefreshBtn');
+  if (!card) return;
+
+  if (rBtn) { rBtn.innerHTML = '<span class="spin"></span> Loading…'; rBtn.disabled = true; }
+  card.innerHTML = `<div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0ea5e9,#38bdf8,#7dd3fc);border-radius:14px 14px 0 0"></div>
+    <div style="display:flex;align-items:center;justify-content:center;padding:24px;color:var(--muted);font-size:12px;gap:8px"><span class="spin"></span> Fetching news…</div>`;
+
+  // ── 1. Bootstrap news if empty ────────────────────────
+  if (!fhNewsCache.length && !rssNewsCache.length) {
+    await Promise.allSettled([loadFinnhubNews(), loadRssNews()]);
+  }
+
+  // ── 2. Zeitgeist (proxy, optional) ───────────────────
+  let zeitgeist = null;
+  try { zeitgeist = await fetchZeitgeist(); } catch(e) {}
+
+  // ── 3. Build unified item list ────────────────────────
+  const items = [];
+
+  fhNewsCache.slice(0, 30).forEach(n => {
+    const headline = (n.headline || '').trim();
+    if (!headline) return;
+    items.push({ text: headline, source: n.source || 'Finnhub', ts: n.datetime ? n.datetime * 1000 : 0, cat: _nwCat(headline) });
+  });
+
+  rssNewsCache.slice(0, 40).forEach(n => {
+    const headline = (n.title || '').trim();
+    if (!headline) return;
+    items.push({ text: headline, source: n.source || 'RSS', ts: n.pubDate || 0, cat: _nwCat(headline) });
+  });
+
+  if (zeitgeist?.news) {
+    zeitgeist.news.forEach(n => {
+      const headline = (n.title || '').trim();
+      if (!headline) return;
+      items.push({ text: headline, source: n.source || 'Web', ts: n.published_at ? new Date(n.published_at).getTime() : 0, cat: _nwCat(headline) });
+    });
+  }
+
+  // ── 4. Deduplicate (by first-15-chars key) + sort by recency ─
+  const seen = new Set();
+  const deduped = items.filter(n => {
+    const key = n.text.slice(0, 20).toLowerCase().replace(/\s+/g,'');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).sort((a, b) => b.ts - a.ts);
+
+  // ── 5. Group — max 4 CRYPTO, 3 MACRO, 2 REG ─────────
+  const groups = { CRYPTO: [], MACRO: [], REG: [] };
+  const caps   = { CRYPTO: 4, MACRO: 3, REG: 2 };
+  deduped.forEach(n => {
+    if (groups[n.cat].length < caps[n.cat]) groups[n.cat].push(n);
+  });
+
+  // ── 6. Trending (CoinGecko via zeitgeist) ────────────
+  const trending = (zeitgeist?.trending || []).slice(0, 6);
+
+  // ── 7. Render ─────────────────────────────────────────
+  const now  = new Date();
+  const sgt  = new Date(now.getTime() + 8 * 3600000);
+  const tstr = sgt.toLocaleTimeString('en-SG', { hour:'2-digit', minute:'2-digit', timeZone:'UTC' }) + ' SGT';
+  const dstr = sgt.toLocaleDateString('en-SG', { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' });
+
+  if (tsEl) tsEl.textContent = `Updated ${tstr}`;
+  _newsWatchTsVal = Date.now();
+  card.innerHTML  = _renderNewsWatchCard(groups, trending, tstr, dstr);
+  _newsWatchText  = _formatNewsWatchText(groups, trending, tstr, dstr);
+
+  if (rBtn) { rBtn.innerHTML = '🔄 Refresh'; rBtn.disabled = false; }
+}
+
+function _renderNewsWatchCard(groups, trending, tstr, dstr) {
+  const sectionCfg = [
+    { key: 'CRYPTO', label: '🔥 Crypto',         color: '#a78bfa' },
+    { key: 'MACRO',  label: '📈 Macro / Markets', color: '#60a5fa' },
+    { key: 'REG',    label: '⚖️ Regulatory',      color: '#f59e0b' },
+  ];
+
+  let html = `<div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#0ea5e9,#38bdf8,#7dd3fc);border-radius:14px 14px 0 0"></div>`;
+
+  const totalItems = Object.values(groups).reduce((s, a) => s + a.length, 0);
+  if (totalItems === 0 && trending.length === 0) {
+    return html + `<div style="text-align:center;padding:28px;color:var(--muted);font-size:12px">No news loaded yet — check that your news feeds are active in the Pulse tab.</div>`;
+  }
+
+  // Age formatter
+  const age = ts => {
+    if (!ts) return '';
+    const m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 60)  return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24)  return `${h}h ago`;
+    return `${Math.floor(h/24)}d ago`;
+  };
+
+  // Sections
+  sectionCfg.forEach(({ key, label, color }) => {
+    const items = groups[key];
+    if (!items.length) return;
+    html += `<div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:0.08em;margin-bottom:7px;border-bottom:1px solid ${color}22;padding-bottom:5px">${label}</div>`;
+    items.forEach(n => {
+      const ageStr = age(n.ts);
+      html += `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+        <span style="color:${color};flex-shrink:0;margin-top:1px">→</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;color:var(--frost);line-height:1.5;word-break:break-word">${n.text}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${n.source}${ageStr ? ' · ' + ageStr : ''}</div>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  // Trending coins
+  if (trending.length > 0) {
+    html += `<div style="margin-bottom:4px">
+      <div style="font-size:10px;font-weight:700;color:#34d399;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:7px;border-bottom:1px solid rgba(52,211,153,0.15);padding-bottom:5px">📊 Trending (CoinGecko)</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">`;
+    trending.forEach((t, i) => {
+      const chg = t.data?.price_change_percentage_24h?.usd;
+      const chgStr = chg != null ? ` ${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%` : '';
+      const chgCol = chg >= 0 ? '#10b981' : '#ef4444';
+      html += `<div style="background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--frost)">
+        #${i+1} <span style="color:#34d399">${(t.symbol||t.id||'?').toUpperCase()}</span>${chgStr ? ` <span style="color:${chgCol}">${chgStr}</span>` : ''}
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Footer
+  html += `<div style="margin-top:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--muted);display:flex;justify-content:space-between">
+    <span>ARX News Engine · Finnhub + RSS + CoinGecko</span>
+    <span>${tstr} · ${dstr}</span>
+  </div>`;
+
+  return html;
+}
+
+function _formatNewsWatchText(groups, trending, tstr, dstr) {
+  const lines = [];
+  lines.push(`📰 ARX NEWS WATCH — ${tstr} · ${dstr}`);
+  lines.push('');
+
+  const sectionCfg = [
+    { key: 'CRYPTO', label: '🔥 CRYPTO' },
+    { key: 'MACRO',  label: '📈 MACRO / MARKETS' },
+    { key: 'REG',    label: '⚖️ REGULATORY' },
+  ];
+
+  sectionCfg.forEach(({ key, label }) => {
+    const items = groups[key];
+    if (!items.length) return;
+    lines.push(label);
+    items.forEach(n => {
+      const src = n.source ? ` — ${n.source}` : '';
+      lines.push(`• ${n.text}${src}`);
+    });
+    lines.push('');
+  });
+
+  if (trending.length > 0) {
+    lines.push('📊 TRENDING (CoinGecko)');
+    const parts = trending.map((t, i) => {
+      const chg = t.data?.price_change_percentage_24h?.usd;
+      const chgStr = chg != null ? ` ${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%` : '';
+      return `#${i+1} ${(t.symbol||t.id||'?').toUpperCase()}${chgStr}`;
+    });
+    lines.push(parts.join(' · '));
+    lines.push('');
+  }
+
+  lines.push('─'.repeat(44));
+  lines.push('');
+  lines.push(`📊 Data: ARX News Engine · Finnhub + RSS + CoinGecko`);
+  lines.push(`🔔 arx.trade · ${tstr} · ${dstr}`);
+
+  return lines.join('\n');
+}
+
+function copyNewsWatch() {
+  if (!_newsWatchText) {
+    generateNewsWatch().then(() => {
+      if (_newsWatchText) navigator.clipboard.writeText(_newsWatchText).catch(()=>{});
+    });
+    return;
+  }
+  const btn = document.getElementById('newsWatchCopyBtn');
+  navigator.clipboard.writeText(_newsWatchText).then(() => {
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '✅ Copied!';
+      btn.style.background = 'rgba(16,185,129,0.15)';
+      btn.style.borderColor = 'rgba(16,185,129,0.5)';
+      setTimeout(() => {
+        btn.innerHTML = orig;
+        btn.style.background = 'rgba(56,189,248,0.08)';
+        btn.style.borderColor = 'rgba(56,189,248,0.35)';
+      }, 2000);
+    }
+  }).catch(() => {});
+}
+
 // ── Build the visual HTML card ────────────────────────────
 function buildBlastCardHTML(entry, sig, scoreResult, text, ts, idx) {
   const mkt    = entry.mkt || {};
@@ -8739,6 +8993,11 @@ function generateBlast(auto = false) {
 
   renderBlastTab();
 
+  // Refresh News Watch if it's stale (>5 min) or empty
+  if (!_newsWatchText || Date.now() - _newsWatchTsVal > 5 * 60 * 1000) {
+    generateNewsWatch().catch(() => {});
+  }
+
   if (btn) { btn.innerHTML = '<span>⚡</span> Generate Now'; btn.disabled = false; }
 }
 
@@ -8839,6 +9098,8 @@ function initBlast() {
   if (notice) notice.style.display = livePos.size === 0 ? 'block' : 'none';
   // Render any saved blasts from log
   renderBlastTab();
+  // Auto-load News Watch on first open
+  generateNewsWatch().catch(() => {});
   // Start countdown
   startBlastScheduler();
 }
