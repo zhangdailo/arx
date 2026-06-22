@@ -2525,13 +2525,16 @@
 // ═══════════════════════════════════════════════════════
 
 const HL_API     = 'https://api.hyperliquid.xyz/info';
+// Historical data — served from GitHub Pages after hydromancer_pull.py pushes it
+const GH_DATA    = 'https://zhangdailo.github.io/arx/data';
+let   _ghManifest = null; // cached list of available files
 
 // ═══════════════════════════════════════════════════════
 // FINNHUB ORACLE  –  Free tier: 60 calls/min hard limit
 // Target: 54 calls/min (10% below = never approach cap)
 // WebSocket: max 45 symbols (10% below 50 limit)
 // ═══════════════════════════════════════════════════════
-const FH_KEY  = 'd8ggcnhr01qlgcujb4n0d8ggcnhr01qlgcujb4ng';
+const FH_KEY  = 'd8sd999r01qkn75dpdmgd8sd999r01qkn75dpdn0';
 const FH_REST = 'https://finnhub.io/api/v1';
 const FH_WS   = 'wss://ws.finnhub.io';
 const FH_RATE_LIMIT  = 54;            // calls/min we allow ourselves
@@ -3290,14 +3293,16 @@ async function fetchKOL() {
   const kolAttempts = [
     { url: KOL_PROXY,  label: 'proxy' },
     { url: KOL_URL,    label: 'direct' },
+    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(KOL_URL)}`, label: 'proxy-allorigins', wrapped: true },
   ];
 
   let kolMap = new Map();
   for (const { url, label } of kolAttempts) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
+      let d = await r.json();
+      if (label === 'proxy-allorigins') { try { d = JSON.parse(d.contents); } catch(e) { throw new Error('allorigins parse fail'); } }
       // Hyperbot wraps: {code,msg,data:{total,list:[...]}}  OR plain array
       const kols = Array.isArray(d) ? d
                  : Array.isArray(d.data) ? d.data
@@ -3364,12 +3369,14 @@ async function fetchKOL() {
   const recAttempts = [
     { url: REC_PROXY, label: 'proxy' },
     { url: REC_URL,   label: 'direct' },
+    { url: `https://api.allorigins.win/get?url=${encodeURIComponent(REC_URL)}`, label: 'proxy-allorigins', wrapped: true },
   ];
-  for (const { url, label } of recAttempts) {
+  for (const { url, label, wrapped } of recAttempts) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
+      let d = await r.json();
+      if (wrapped) { try { d = JSON.parse(d.contents); } catch(e) { throw new Error('allorigins parse fail'); } }
       const items = Array.isArray(d) ? d
                   : Array.isArray(d.data) ? d.data
                   : Array.isArray(d.data?.list) ? d.data.list
@@ -7470,6 +7477,28 @@ function pickBlastTarget() {
 // Hypothesis: when 8h funding rate exceeds ±0.05% (≈21.9% APR),
 // price mean-reverts over the next 24–48h.
 // This is one of the most well-established signals in perp markets.
+async function fetchGhFundingHistory(coin) {
+  // Try to load funding history from GitHub Pages (hydromancer_pull.py output)
+  // Returns array of { date, funding_rate, oi, mark_px } or null if not available
+  try {
+    // First check manifest to see if this coin's data exists
+    if (!_ghManifest) {
+      const r = await fetch(`${GH_DATA}/manifest.json`, { signal: AbortSignal.timeout(3000) });
+      if (r.ok) _ghManifest = await r.json();
+      else { _ghManifest = { files: [] }; return null; }
+    }
+    const hasFile = _ghManifest.files?.some(f => f.includes(`funding/${coin}.json`));
+    if (!hasFile) return null;
+
+    const r = await fetch(`${GH_DATA}/funding/${coin}.json`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return Array.isArray(j.data) ? j.data : null;
+  } catch(e) {
+    return null;
+  }
+}
+
 async function runFundingBacktest(coin) {
   // Pre-check: coin must be an active perp with a live price
   const mktEntry = pulseRaw.find(p => p.name === coin);
@@ -7477,21 +7506,41 @@ async function runFundingBacktest(coin) {
     return { coin, noData: true, reason: `${coin} is not an active Hyperliquid perp — no price data available` };
   }
 
+  // Try GitHub Pages historical data first (up to 1 year from hydromancer_pull.py)
+  const ghFunding = await fetchGhFundingHistory(coin);
+  const dataSource = ghFunding ? 'GitHub (1yr)' : 'HL API (30d)';
+  console.log(`[Backtest] ${coin} — using ${dataSource}`);
+
   const end   = Date.now();
-  const start = end - 30 * 24 * 3600 * 1000;
+  const start = end - (ghFunding ? 365 : 30) * 24 * 3600 * 1000;
   try {
     const hlJson = async (resp) => {
       const txt = await resp.text();
       try { return JSON.parse(txt); } catch(e) { throw new Error('HL API returned non-JSON: ' + txt.slice(0, 80)); }
     };
-    const [candles, funding] = await Promise.all([
+    const [candles, fundingRaw] = await Promise.all([
       fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({type:'candleSnapshot', req:{coin, interval:'1h', startTime:start, endTime:end}})
       }).then(hlJson),
-      fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({type:'fundingHistory', req:{coin, startTime:start}})
-      }).then(hlJson),
+      ghFunding
+        ? Promise.resolve(null)  // skip HL funding fetch if we have GitHub data
+        : fetch(HL_API, { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({type:'fundingHistory', req:{coin, startTime:start}})
+          }).then(hlJson),
     ]);
+
+    // Merge funding sources: GitHub historical + HL API recent
+    let funding;
+    if (ghFunding) {
+      // Convert GitHub format { date, funding_rate } → HL format { time, fundingRate }
+      funding = ghFunding.map(r => ({
+        time: new Date(r.date).getTime(),
+        fundingRate: r.funding_rate,
+      }));
+    } else {
+      funding = fundingRaw;
+    }
+
     if (!Array.isArray(candles) || !candles.length) return { coin, noData:true };
     if (!Array.isArray(funding) || !funding.length) return { coin, noData:true };
 
@@ -7534,7 +7583,7 @@ async function runFundingBacktest(coin) {
     const avg48  = with48.length ? with48.reduce((a,s)=>a+s.ret48,0)/with48.length : null;
 
     return {
-      coin, total: signals.length,
+      coin, total: signals.length, dataSource,
       winRate: (wins24 / signals.length * 100).toFixed(1),
       avg24: avg24.toFixed(2), avg48: avg48 !== null ? avg48.toFixed(2) : null,
       max24: max24.toFixed(2), min24: min24.toFixed(2),
@@ -7581,7 +7630,7 @@ async function runBacktestInCard(coin, cardIdx) {
   el.innerHTML = `
   <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
     <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:10px">
-      📈 Backtest · Extreme Funding Signal on ${coin} · Last 30 days
+      📈 Backtest · Extreme Funding Signal on ${coin} · ${r.dataSource||'HL API (30d)'}
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5">
       Methodology: when 8h funding &gt; ±0.05% (≈21.9% APR), take the contrarian side. Close after 24h.
