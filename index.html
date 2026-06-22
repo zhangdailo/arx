@@ -1386,6 +1386,12 @@
             style="display:none;color:#c9a84c;font-weight:700;border-left:1px solid rgba(201,168,76,.25);margin-left:4px">
       🏰 Citadel
     </button>
+    <button class="tab-btn" data-tab="lucid" id="lucidTabBtn"
+            style="color:#c084fc;font-weight:700;letter-spacing:.08em;
+                   border-left:1px solid rgba(168,85,247,.3);margin-left:4px;
+                   background:linear-gradient(135deg,rgba(168,85,247,.1),rgba(124,58,237,.06))">
+      ⬡ Lucid
+    </button>
   </nav>
 </header>
 
@@ -2595,7 +2601,132 @@
     </div>
   </section>
 
+  <!-- ══ LUCID — Embedded Intelligence ══════════════════════════════════ -->
+  <section class="tab-panel" id="tab-lucid">
+    <div id="lucidRoot" style="display:flex;flex-direction:column;height:calc(100vh - 110px);max-width:860px;margin:0 auto;padding:20px 20px 0">
+
+      <!-- Header -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-shrink:0">
+        <div style="font-size:20px;font-weight:700;letter-spacing:.18em;color:#c084fc;
+                    text-shadow:0 0 18px rgba(168,85,247,.7)">⬡ LUCID</div>
+        <div style="font-size:9px;letter-spacing:.25em;color:rgba(168,85,247,.5);
+                    border:1px solid rgba(168,85,247,.2);padding:3px 9px">EMBEDDED INTELLIGENCE</div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <div id="lucidStatus" style="font-size:9px;letter-spacing:.15em;color:rgba(168,85,247,.4)">● OFFLINE</div>
+          <button id="lucidKeyBtn" onclick="lucidShowKeyModal()"
+                  style="font-size:9px;letter-spacing:.15em;padding:3px 10px;cursor:pointer;
+                         background:transparent;border:1px solid rgba(168,85,247,.3);color:rgba(168,85,247,.6)">
+            ⚙ API KEY
+          </button>
+          <button onclick="lucidClearHistory()"
+                  style="font-size:9px;letter-spacing:.15em;padding:3px 10px;cursor:pointer;
+                         background:transparent;border:1px solid rgba(168,85,247,.2);color:rgba(168,85,247,.4)">
+            ↺ CLEAR
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages area -->
+      <div id="lucidMessages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;
+           padding-right:6px;padding-bottom:16px;scroll-behavior:smooth">
+        <!-- Welcome message -->
+        <div class="lucid-msg lucid-msg-ai" id="lucidWelcome">
+          <div class="lucid-bubble">
+            <span style="color:rgba(192,132,252,.6);font-size:9px;letter-spacing:.2em;display:block;margin-bottom:6px">LUCID · READY</span>
+            I'm online. Ask me anything — markets, strategy, trade ideas, platform analysis. I have full context on what's live in ARX right now.<br><br>
+            <span style="color:rgba(168,85,247,.5);font-size:10px">⚙ Add your Anthropic API key above to activate.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input bar -->
+      <div style="flex-shrink:0;padding:14px 0 18px;border-top:1px solid rgba(168,85,247,.12)">
+        <div style="display:flex;gap:10px;align-items:flex-end">
+          <textarea id="lucidInput" rows="2"
+            placeholder="Ask Lucid anything — trade ideas, market structure, ARX data..."
+            style="flex:1;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.25);
+                   color:#e0aaff;padding:10px 14px;font-family:'Courier New',monospace;font-size:12px;
+                   resize:none;line-height:1.5;outline:none;
+                   border-radius:2px;letter-spacing:.03em"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();lucidSend()}"
+          ></textarea>
+          <button onclick="lucidSend()"
+                  style="padding:10px 20px;background:rgba(168,85,247,.18);
+                         border:1px solid rgba(168,85,247,.5);color:#c084fc;
+                         font-family:'Courier New',monospace;font-size:11px;
+                         letter-spacing:.15em;cursor:pointer;flex-shrink:0;
+                         transition:background .15s"
+                  onmouseover="this.style.background='rgba(168,85,247,.32)'"
+                  onmouseout="this.style.background='rgba(168,85,247,.18)'">
+            SEND ↵
+          </button>
+        </div>
+        <div style="font-size:9px;letter-spacing:.1em;color:rgba(168,85,247,.25);margin-top:7px">
+          ENTER to send · SHIFT+ENTER for newline · Live ARX context injected automatically
+        </div>
+      </div>
+    </div>
+
+    <!-- API Key Modal -->
+    <div id="lucidKeyModal" style="display:none;position:fixed;inset:0;z-index:200;
+         background:rgba(5,0,16,.85);backdrop-filter:blur(4px);
+         align-items:center;justify-content:center">
+      <div style="background:#08001a;border:1px solid rgba(168,85,247,.4);padding:32px 36px;
+                  max-width:480px;width:90%;font-family:'Courier New',monospace">
+        <div style="font-size:14px;letter-spacing:.2em;color:#c084fc;margin-bottom:8px">⬡ LUCID — API KEY</div>
+        <div style="font-size:10px;color:rgba(168,85,247,.5);letter-spacing:.08em;margin-bottom:20px;line-height:1.7">
+          Your key is stored in sessionStorage (this tab only) and never sent anywhere except the Anthropic API directly.
+          Get one at console.anthropic.com → API Keys.
+        </div>
+        <input id="lucidKeyInput" type="password" placeholder="sk-ant-..."
+               style="width:100%;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.3);
+                      color:#e0aaff;padding:10px 12px;font-family:'Courier New',monospace;
+                      font-size:11px;letter-spacing:.05em;outline:none;margin-bottom:14px"/>
+        <div style="display:flex;gap:10px">
+          <button onclick="lucidSaveKey()"
+                  style="padding:8px 20px;background:rgba(168,85,247,.22);border:1px solid rgba(168,85,247,.5);
+                         color:#c084fc;font-family:'Courier New',monospace;font-size:10px;letter-spacing:.15em;cursor:pointer">
+            SAVE &amp; ACTIVATE
+          </button>
+          <button onclick="document.getElementById('lucidKeyModal').style.display='none'"
+                  style="padding:8px 16px;background:transparent;border:1px solid rgba(168,85,247,.2);
+                         color:rgba(168,85,247,.5);font-family:'Courier New',monospace;font-size:10px;
+                         letter-spacing:.15em;cursor:pointer">
+            CANCEL
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
 </main>
+
+<style>
+.lucid-msg { display:flex; margin:0; }
+.lucid-msg-ai  { justify-content:flex-start; }
+.lucid-msg-user{ justify-content:flex-end; }
+.lucid-bubble {
+  max-width:82%;padding:12px 16px;font-size:12px;line-height:1.75;
+  font-family:'Courier New',monospace;letter-spacing:.02em;
+}
+.lucid-msg-ai .lucid-bubble {
+  background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);
+  color:#d4b8f5;border-left:2px solid rgba(168,85,247,.5);
+}
+.lucid-msg-user .lucid-bubble {
+  background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);
+  color:#e0aaff;border-right:2px solid rgba(124,58,237,.6);
+  text-align:right;
+}
+.lucid-typing { display:inline-flex;gap:4px;align-items:center;padding:4px 0 }
+.lucid-typing span {
+  width:5px;height:5px;border-radius:50%;background:rgba(168,85,247,.6);
+  animation:lucidDot .9s ease-in-out infinite;
+}
+.lucid-typing span:nth-child(2){animation-delay:.2s}
+.lucid-typing span:nth-child(3){animation-delay:.4s}
+@keyframes lucidDot{0%,80%,100%{opacity:.2}40%{opacity:1}}
+</style>
 
 <script>
 // ═══════════════════════════════════════════════════════
@@ -4151,6 +4282,7 @@ document.querySelectorAll('.tab-btn').forEach(b => {
     if (b.dataset.tab === 'wallets'    && !walletsActive)    initWallets();
     if (b.dataset.tab === 'blast'      && !blastActive)      initBlast();
     if (b.dataset.tab === 'paraplanner'&& !ppActive)         initParaplanner();
+    if (b.dataset.tab === 'lucid'      && !lucidActive)      initLucid();
     // Re-render live tabs on revisit
     if (b.dataset.tab === 'technical' && techActive) techResizeCharts();
     if (b.dataset.tab === 'funding'   && fundingActive)  renderFundingGrid();
@@ -9177,6 +9309,346 @@ function initParaplanner() {
     </div>
   </div>
 </div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// LUCID — Embedded Intelligence (Anthropic API, browser-direct)
+// ═══════════════════════════════════════════════════════
+
+let lucidActive    = false;
+let lucidHistory   = [];   // full conversation history sent to API
+const LUCID_SS_KEY = 'arx_lucid_apikey';
+const LUCID_HIST_SS= 'arx_lucid_history';
+
+// ── Build live context from ARX dashboard state ──────────
+function buildLucidContext() {
+  const lines = [];
+  const u = window.ARX_USER;
+  lines.push('=== ARX LIVE CONTEXT ===');
+  lines.push('Timestamp: ' + new Date().toLocaleString('en-SG', {timeZone:'Asia/Singapore'}) + ' SGT');
+  if (u) lines.push('Operator: ' + u.uid + ' (' + (u.level||'') + ')');
+
+  // Grab any visible crypto prices from the DOM
+  try {
+    const priceRows = document.querySelectorAll('#tTbl tr[data-coin]');
+    if (priceRows.length > 0) {
+      lines.push('\n-- Top Hyperliquid Perps (currently loaded) --');
+      let count = 0;
+      priceRows.forEach(r => {
+        if (count++ > 12) return;
+        const cells = r.querySelectorAll('td');
+        if (cells.length > 3) {
+          lines.push(
+            (cells[1]?.textContent?.trim() || '') + ' | price: ' +
+            (cells[2]?.textContent?.trim() || '') + ' | 24h: ' +
+            (cells[3]?.textContent?.trim() || '') + ' | OI: ' +
+            (cells[4]?.textContent?.trim() || '')
+          );
+        }
+      });
+    }
+  } catch(e) {}
+
+  // Grab funding rates if visible
+  try {
+    const fundRows = document.querySelectorAll('#fundingGrid .fund-card');
+    if (fundRows.length > 0) {
+      lines.push('\n-- Funding Rates (loaded) --');
+      let count = 0;
+      fundRows.forEach(card => {
+        if (count++ > 8) return;
+        lines.push(card.textContent?.replace(/\s+/g,' ').trim() || '');
+      });
+    }
+  } catch(e) {}
+
+  // Grab screener data if visible
+  try {
+    const screenerRows = document.querySelectorAll('#screenerTbl tr');
+    if (screenerRows.length > 1) {
+      lines.push('\n-- Screener (loaded) --');
+      let count = 0;
+      screenerRows.forEach((r,i) => {
+        if (i === 0 || count++ > 8) return;
+        lines.push(r.textContent?.replace(/\s+/g,' ').trim() || '');
+      });
+    }
+  } catch(e) {}
+
+  // Grab any market news headlines from feed
+  try {
+    const feedItems = document.querySelectorAll('.feed-card .feed-title');
+    if (feedItems.length > 0) {
+      lines.push('\n-- Recent News Headlines (ARX Feed) --');
+      let count = 0;
+      feedItems.forEach(el => {
+        if (count++ > 6) return;
+        lines.push('• ' + el.textContent?.trim());
+      });
+    }
+  } catch(e) {}
+
+  lines.push('=== END CONTEXT ===');
+  return lines.join('\n');
+}
+
+// ── System prompt ─────────────────────────────────────────
+function buildLucidSystem() {
+  const uid = window.ARX_USER?.uid || 'the operator';
+  return `You are Lucid — the embedded intelligence of the ARX trading command bridge. You run inside ARX, a real-time crypto and equities intelligence dashboard built by Daryl (${uid}) in Singapore.
+
+ARX platform capabilities: Hyperliquid perpetuals (funding rates, OI, liquidations, price data), Finnhub US equities, DailoPulse (news + signals), Whale tracker, RSI scanner, Funding Map, Screener, Predictions engine, Flows, Blast (broadcast comms).
+
+Your role is to act as a co-founder and thinking partner with deep markets expertise:
+- Break problems to structural bedrock before rebuilding. Never reason by analogy when you can reason from cause.
+- Be specific: numbers, mechanisms, names — never vague generalities.
+- Challenge assumptions and surface blind spots in every question.
+- Pull from game theory, behavioral finance, macro, technical analysis, microstructure.
+- Lead with the insight, not the buildup. No padding, no hedging.
+- When the user is wrong or there is a better path, say so directly.
+- Keep responses concise unless depth is explicitly requested.
+
+You have access to live ARX dashboard data injected below each message.`;
+}
+
+// ── Init Lucid ────────────────────────────────────────────
+function initLucid() {
+  lucidActive = true;
+  // Restore history from sessionStorage if present
+  try {
+    const saved = sessionStorage.getItem(LUCID_HIST_SS);
+    if (saved) {
+      lucidHistory = JSON.parse(saved);
+      // Re-render previous messages
+      lucidHistory.forEach(msg => {
+        if (msg.role === 'user')      appendLucidMsg(msg.content, 'user', false);
+        else if (msg.role === 'assistant') appendLucidMsg(msg.content, 'ai', false);
+      });
+    }
+  } catch(e) {}
+  // Update status
+  const hasKey = !!sessionStorage.getItem(LUCID_SS_KEY);
+  updateLucidStatus(hasKey);
+}
+
+function updateLucidStatus(online) {
+  const el = document.getElementById('lucidStatus');
+  if (!el) return;
+  if (online) {
+    el.textContent  = '● ONLINE';
+    el.style.color  = '#86efac';
+  } else {
+    el.textContent  = '● OFFLINE — add API key';
+    el.style.color  = 'rgba(168,85,247,.4)';
+  }
+}
+
+// ── Key management ────────────────────────────────────────
+function lucidShowKeyModal() {
+  const modal = document.getElementById('lucidKeyModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  // Pre-fill if exists
+  const existing = sessionStorage.getItem(LUCID_SS_KEY);
+  if (existing) document.getElementById('lucidKeyInput').value = existing;
+  document.getElementById('lucidKeyInput').focus();
+}
+function lucidSaveKey() {
+  const val = document.getElementById('lucidKeyInput').value.trim();
+  if (!val.startsWith('sk-ant-')) {
+    document.getElementById('lucidKeyInput').style.borderColor = '#f87171';
+    return;
+  }
+  sessionStorage.setItem(LUCID_SS_KEY, val);
+  document.getElementById('lucidKeyModal').style.display = 'none';
+  updateLucidStatus(true);
+}
+
+// ── Clear history ─────────────────────────────────────────
+function lucidClearHistory() {
+  lucidHistory = [];
+  sessionStorage.removeItem(LUCID_HIST_SS);
+  const container = document.getElementById('lucidMessages');
+  if (!container) return;
+  // Remove all messages except welcome
+  const msgs = container.querySelectorAll('.lucid-msg:not(#lucidWelcome)');
+  msgs.forEach(m => m.remove());
+}
+
+// ── Append message bubble ─────────────────────────────────
+function appendLucidMsg(text, role, scroll = true) {
+  const container = document.getElementById('lucidMessages');
+  if (!container) return null;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'lucid-msg lucid-msg-' + (role === 'user' ? 'user' : 'ai');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'lucid-bubble';
+  if (role === 'ai') {
+    // Render markdown-ish: bold **text**, newlines
+    bubble.innerHTML = text
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
+      .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
+      .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
+      .replace(/\n/g,'<br>');
+  } else {
+    bubble.textContent = text;
+  }
+
+  wrapper.appendChild(bubble);
+  container.appendChild(wrapper);
+
+  if (scroll) container.scrollTop = container.scrollHeight;
+  return bubble;
+}
+
+// ── Show typing indicator ─────────────────────────────────
+function showLucidTyping() {
+  const container = document.getElementById('lucidMessages');
+  if (!container) return null;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'lucid-msg lucid-msg-ai';
+  wrapper.id = 'lucidTypingIndicator';
+  wrapper.innerHTML = '<div class="lucid-bubble"><div class="lucid-typing"><span></span><span></span><span></span></div></div>';
+  container.appendChild(wrapper);
+  container.scrollTop = container.scrollHeight;
+  return wrapper;
+}
+function removeLucidTyping() {
+  const el = document.getElementById('lucidTypingIndicator');
+  if (el) el.remove();
+}
+
+// ── Send message ──────────────────────────────────────────
+async function lucidSend() {
+  const input  = document.getElementById('lucidInput');
+  const rawText = input?.value?.trim();
+  if (!rawText) return;
+
+  const apiKey = sessionStorage.getItem(LUCID_SS_KEY);
+  if (!apiKey) { lucidShowKeyModal(); return; }
+
+  input.value = '';
+  input.style.height = '';
+
+  // Show user bubble
+  appendLucidMsg(rawText, 'user');
+
+  // Add to history
+  lucidHistory.push({ role: 'user', content: rawText });
+
+  // Build context-enriched user content
+  const ctx       = buildLucidContext();
+  const messagesWithCtx = lucidHistory.map((m, i) => {
+    // Inject context into the last user message
+    if (i === lucidHistory.length - 1 && m.role === 'user') {
+      return { role: 'user', content: m.content + '\n\n' + ctx };
+    }
+    return m;
+  });
+
+  // Show typing
+  showLucidTyping();
+
+  // ── Streaming call to Anthropic ──
+  let assistantText = '';
+  let streamBubble  = null;
+  let streamWrapper = null;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':       'application/json',
+        'x-api-key':          apiKey,
+        'anthropic-version':  '2023-06-01',
+        'anthropic-beta':     'messages-2023-12-15',
+      },
+      body: JSON.stringify({
+        model:      'claude-sonnet-4-6',
+        max_tokens: 1500,
+        system:     buildLucidSystem(),
+        messages:   messagesWithCtx,
+        stream:     true,
+      }),
+    });
+
+    if (!res.ok) {
+      const errJson = await res.json().catch(()=>({}));
+      throw new Error(errJson?.error?.message || 'HTTP ' + res.status);
+    }
+
+    removeLucidTyping();
+
+    // Create streaming bubble
+    const container = document.getElementById('lucidMessages');
+    streamWrapper = document.createElement('div');
+    streamWrapper.className = 'lucid-msg lucid-msg-ai';
+    streamBubble = document.createElement('div');
+    streamBubble.className = 'lucid-bubble';
+    streamWrapper.appendChild(streamBubble);
+    container.appendChild(streamWrapper);
+
+    // Read SSE stream
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let   buffer  = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
+            assistantText += parsed.delta.text;
+            // Live render
+            streamBubble.innerHTML = assistantText
+              .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+              .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
+              .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
+              .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
+              .replace(/\n/g,'<br>') + '<span style="animation:lucidDot .8s infinite;opacity:.5">▍</span>';
+            container.scrollTop = container.scrollHeight;
+          }
+        } catch(e) {}
+      }
+    }
+
+    // Final render (remove cursor)
+    if (streamBubble) {
+      streamBubble.innerHTML = assistantText
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
+        .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
+        .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
+        .replace(/\n/g,'<br>');
+    }
+
+    // Save to history
+    lucidHistory.push({ role: 'assistant', content: assistantText });
+    try { sessionStorage.setItem(LUCID_HIST_SS, JSON.stringify(lucidHistory)); } catch(e) {}
+
+  } catch(err) {
+    removeLucidTyping();
+    if (streamWrapper) streamWrapper.remove();
+    const errBubble = appendLucidMsg('', 'ai');
+    if (errBubble) errBubble.innerHTML =
+      '<span style="color:#f87171;font-size:10px">⚠ ERROR: ' +
+      err.message.replace(/</g,'&lt;') + '</span><br>' +
+      '<span style="color:rgba(168,85,247,.4);font-size:9px">Check your API key in ⚙ API KEY</span>';
+  }
+}
+</script>
 
 <script>
 // ── Supabase config (same values as login.html — fill in after setup) ──
