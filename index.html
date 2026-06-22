@@ -1284,6 +1284,8 @@
     .tsr-dim { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; }
     .tsr-n { font-size: 11px; color: var(--frost); font-family:'Inter',monospace; font-weight: 600; }
   </style>
+<!-- Local config: gitignored, only present on your machine. Sets window.LUCID_API_KEY. -->
+<script src="local-config.js" onerror="void 0"></script>
 </head>
 <body>
 
@@ -9321,60 +9323,135 @@ const LUCID_SS_KEY = 'arx_lucid_apikey';
 const LUCID_HIST_SS= 'arx_lucid_history';
 
 // ── Build live context from ARX dashboard state ──────────
-function buildLucidContext() {
+// ── Zeitgeist cache ───────────────────────────────────────────────────
+let _zeitgeistCache = null, _zeitgeistTs = 0;
+async function fetchZeitgeist() {
+  if (_zeitgeistCache && Date.now() - _zeitgeistTs < 180000) return _zeitgeistCache;
+  try {
+    const res = await fetch('http://localhost:3001/zeitgeist',
+      { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    _zeitgeistCache = await res.json();
+    _zeitgeistTs    = Date.now();
+    return _zeitgeistCache;
+  } catch(e) { return null; }
+}
+
+// ── IS_LOCAL: true when running via localhost dev server ──────────────
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+async function buildLucidContext() {
   const lines = [];
   const u = window.ARX_USER;
   lines.push('=== ARX LIVE CONTEXT ===');
-  lines.push('Timestamp: ' + new Date().toLocaleString('en-SG', {timeZone:'Asia/Singapore'}) + ' SGT');
+  lines.push('Time: ' + new Date().toLocaleString('en-SG', {timeZone:'Asia/Singapore'}) + ' SGT');
   if (u) lines.push('Operator: ' + u.uid + ' (' + (u.level||'') + ')');
 
-  // Grab any visible crypto prices from the DOM
+  // ── 1. HL PERPS — from pulseRaw (live Hyperliquid data) ────────────
   try {
-    const priceRows = document.querySelectorAll('#tTbl tr[data-coin]');
-    if (priceRows.length > 0) {
-      lines.push('\n-- Top Hyperliquid Perps (currently loaded) --');
-      let count = 0;
-      priceRows.forEach(r => {
-        if (count++ > 12) return;
-        const cells = r.querySelectorAll('td');
-        if (cells.length > 3) {
-          lines.push(
-            (cells[1]?.textContent?.trim() || '') + ' | price: ' +
-            (cells[2]?.textContent?.trim() || '') + ' | 24h: ' +
-            (cells[3]?.textContent?.trim() || '') + ' | OI: ' +
-            (cells[4]?.textContent?.trim() || '')
-          );
-        }
+    if (typeof pulseRaw !== 'undefined' && pulseRaw.length > 0) {
+      const byOI = [...pulseRaw].filter(c => c.openInterest).sort((a,b)=>b.openInterest-a.openInterest);
+      lines.push('\n-- HYPERLIQUID PERPS (top 20 by OI) --');
+      byOI.slice(0,20).forEach(c => {
+        const fund = c.funding != null ? (c.funding*100).toFixed(4)+'%/hr' : '?';
+        const oi   = c.openInterest > 1e9 ? (c.openInterest/1e9).toFixed(2)+'B'
+                   : c.openInterest > 1e6 ? (c.openInterest/1e6).toFixed(1)+'M' : c.openInterest;
+        lines.push(`  ${c.name||c.coin}: $${c.markPx} | OI:${oi} | Fund:${fund} | 24h:${c.pctChg24||'?'}%`);
       });
+      const byFund = [...pulseRaw].filter(c => c.funding != null).sort((a,b)=>b.funding-a.funding);
+      if (byFund.length > 4) {
+        lines.push('Funding extremes — HIGH: ' + byFund.slice(0,3).map(c=>`${c.name} ${(c.funding*100).toFixed(4)}%`).join(', '));
+        lines.push('Funding extremes — LOW:  ' + byFund.slice(-3).reverse().map(c=>`${c.name} ${(c.funding*100).toFixed(4)}%`).join(', '));
+      }
     }
   } catch(e) {}
 
-  // Grab funding rates if visible
+  // ── 2. TRADER TAXONOMY — from traders[] (arx_enriched.json) ────────
   try {
-    const fundRows = document.querySelectorAll('#fundingGrid .fund-card');
-    if (fundRows.length > 0) {
-      lines.push('\n-- Funding Rates (loaded) --');
-      let count = 0;
-      fundRows.forEach(card => {
-        if (count++ > 8) return;
-        lines.push(card.textContent?.replace(/\s+/g,' ').trim() || '');
+    if (typeof traders !== 'undefined' && traders.length > 0) {
+      const top = [...traders]
+        .filter(t => t['30d']?.pnl != null)
+        .sort((a,b) => (b['30d'].pnl||0) - (a['30d'].pnl||0))
+        .slice(0,15);
+      lines.push('\n-- TRADER TAXONOMY (top 15 by 30d PnL) --');
+      top.forEach(t => {
+        const badge  = t.badge || 'Unranked';
+        const handle = t.handle ? `@${t.handle}` : '';
+        const p30    = t['30d']?.pnl != null   ? `30d:$${(t['30d'].pnl/1e3).toFixed(0)}K`  : '';
+        const pAt    = t.allTime?.pnl != null  ? `AT:$${(t.allTime.pnl/1e3).toFixed(0)}K`  : '';
+        const pos    = (t.positions||[]).slice(0,4).map(p=>`${p.coin}${p.side==='long'?'↑':'↓'}${p.lev||1}x`).join(' ');
+        lines.push(`  [${badge}] ${t.name||t.address?.slice(0,10)} ${handle} | ${p30} ${pAt}${pos?' | '+pos:''}`);
       });
+      const dist = traders.reduce((a,t)=>{ a[t.badge||'Unranked']=(a[t.badge||'Unranked']||0)+1; return a; },{});
+      lines.push('Badge dist: ' + Object.entries(dist).map(([k,v])=>`${k}:${v}`).join(' | '));
     }
   } catch(e) {}
 
-  // Grab screener data if visible
+  // ── 3. KOL INTELLIGENCE — wallets + social from kolList[] ──────────
   try {
-    const screenerRows = document.querySelectorAll('#screenerTbl tr');
-    if (screenerRows.length > 1) {
-      lines.push('\n-- Screener (loaded) --');
-      let count = 0;
-      screenerRows.forEach((r,i) => {
-        if (i === 0 || count++ > 8) return;
-        lines.push(r.textContent?.replace(/\s+/g,' ').trim() || '');
+    if (typeof kolList !== 'undefined' && kolList.length > 0) {
+      const topKols = [...kolList].filter(k=>k.pnl!=null).sort((a,b)=>(b.pnl||0)-(a.pnl||0)).slice(0,15);
+      lines.push('\n-- KOL INTELLIGENCE (top 15 by PnL) --');
+      topKols.forEach(k => {
+        const social  = k.handle ? `@${k.handle}` : (k.twitterName||'');
+        const addr    = k.address?.slice(0,10) || '';
+        const pnl     = k.pnl != null ? `$${(k.pnl/1e3).toFixed(0)}K PnL` : '';
+        const pos     = (k.positions||[]).slice(0,4).map(p=>`${p.coin}${p.side==='long'?'↑':'↓'}`).join(' ');
+        lines.push(`  ${social||addr} | ${pnl}${pos?' | Pos: '+pos:''}`);
       });
+      lines.push(`Total KOLs tracked: ${kolList.length}`);
     }
   } catch(e) {}
 
+  // ── 4. RSI SCANNER signals ──────────────────────────────────────────
+  try {
+    if (typeof rsiData !== 'undefined' && rsiData.length > 0) {
+      const extreme = rsiData.filter(r => r.rsi != null && (r.rsi > 70 || r.rsi < 30));
+      if (extreme.length > 0) {
+        lines.push('\n-- RSI EXTREMES (overbought >70 / oversold <30) --');
+        extreme.slice(0,10).forEach(r => {
+          const tag = r.rsi > 70 ? 'OVERBOUGHT' : 'OVERSOLD';
+          lines.push(`  ${r.name}: RSI ${r.rsi?.toFixed(1)} [${tag}] | $${r.markPx}`);
+        });
+      }
+    }
+  } catch(e) {}
+
+  // ── 5. NEWS — fhNewsCache + rssNewsCache ────────────────────────────
+  try {
+    const allNews = [];
+    if (typeof fhNewsCache  !== 'undefined') allNews.push(...fhNewsCache.slice(0,6).map(n=>n.headline||''));
+    if (typeof rssNewsCache !== 'undefined') allNews.push(...rssNewsCache.slice(0,6).map(n=>n.title||''));
+    const headlines = allNews.filter(Boolean);
+    if (headlines.length > 0) {
+      lines.push('\n-- ARX NEWS FEEDS (latest) --');
+      headlines.slice(0,10).forEach(h => lines.push(`  • ${h}`));
+    }
+  } catch(e) {}
+
+  // ── 6. ZEITGEIST — from proxy (CoinGecko trending + RSS headlines) ──
+  try {
+    const z = await fetchZeitgeist();
+    if (z) {
+      if (z.trending?.length > 0) {
+        lines.push('\n-- ZEITGEIST: TRENDING RIGHT NOW (CoinGecko) --');
+        z.trending.forEach(c => lines.push(`  ${c.symbol} (${c.name}) — CMC rank #${c.rank}`));
+      }
+      if (z.headlines?.length > 0) {
+        lines.push(`\n-- ZEITGEIST: BREAKING NEWS (${z.sources?.[0]||'RSS'}) --`);
+        z.headlines.forEach(h => lines.push(`  • ${h.title}`));
+      }
+    }
+  } catch(e) {}
+
+  lines.push('\n=== END CONTEXT ===');
+  return lines.join('\n');
+}
+
+// ── DEAD CODE stub kept so old references don't break ────────────────
+// (old sync version removed; buildLucidContext is now async above)
+function _buildLucidContext_legacy() {
+  const lines = [];
   // Grab any market news headlines from feed
   try {
     const feedItems = document.querySelectorAll('.feed-card .feed-title');
@@ -9390,7 +9467,7 @@ function buildLucidContext() {
 
   lines.push('=== END CONTEXT ===');
   return lines.join('\n');
-}
+}  // end _buildLucidContext_legacy
 
 // ── System prompt ─────────────────────────────────────────
 function buildLucidSystem() {
@@ -9414,21 +9491,88 @@ You have access to live ARX dashboard data injected below each message.`;
 // ── Init Lucid ────────────────────────────────────────────
 function initLucid() {
   lucidActive = true;
-  // Restore history from sessionStorage if present
+
+  // Auto-inject key from local-config.js if present and not already set
+  if (window.LUCID_API_KEY && window.LUCID_API_KEY !== 'sk-ant-PASTE_YOUR_KEY_HERE') {
+    sessionStorage.setItem(LUCID_SS_KEY, window.LUCID_API_KEY);
+  }
+
+  // Restore chat history from sessionStorage
   try {
     const saved = sessionStorage.getItem(LUCID_HIST_SS);
     if (saved) {
       lucidHistory = JSON.parse(saved);
-      // Re-render previous messages
       lucidHistory.forEach(msg => {
-        if (msg.role === 'user')      appendLucidMsg(msg.content, 'user', false);
-        else if (msg.role === 'assistant') appendLucidMsg(msg.content, 'ai', false);
+        if (msg.role === 'user')           appendLucidMsg(msg.content, 'user', false);
+        else if (msg.role === 'assistant') appendLucidMsg(msg.content, 'ai',   false);
       });
     }
   } catch(e) {}
-  // Update status
-  const hasKey = !!sessionStorage.getItem(LUCID_SS_KEY);
-  updateLucidStatus(hasKey);
+
+  // Status
+  updateLucidStatus(IS_LOCAL || !!sessionStorage.getItem(LUCID_SS_KEY));
+
+  // ── Bootstrap all ARX data sources in background ──────────────────
+  // Each fires silently — Lucid context will be full by the time user sends first message
+  lucidBootstrapData();
+}
+
+async function lucidBootstrapData() {
+  const statusEl = document.getElementById('lucidStatus');
+  const setStatus = (msg, color) => {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.style.color = color || '#86efac';
+  };
+
+  // 1. Taxonomy + KOL wallets + KOL social (arx_enriched.json + Hyperbot proxy)
+  if (!traders.length) {
+    setStatus('⟳ Loading taxonomy…', 'rgba(168,85,247,.6)');
+    try {
+      await loadBase();   // fills traders[]
+    } catch(e) {}
+  }
+  if (!kolList.length) {
+    setStatus('⟳ Loading KOL data…', 'rgba(168,85,247,.6)');
+    try {
+      await fetchKOL();   // fills kolList[] — wallet + social (handle, twitterName)
+    } catch(e) {}
+  }
+
+  // 2. HL live data — perps, OI, funding rates
+  if (!pulseRaw.length) {
+    setStatus('⟳ Loading HL data…', 'rgba(168,85,247,.6)');
+    try {
+      await fetchPulse(true);   // fills pulseRaw[] — markPx, OI, funding, 24h
+    } catch(e) {}
+  }
+
+  // 3. News feeds (Toutiao/RSS + Finnhub)
+  if (!rssNewsCache.length) {
+    setStatus('⟳ Loading news feeds…', 'rgba(168,85,247,.6)');
+    try {
+      await loadRssNews();        // fills rssNewsCache[]
+    } catch(e) {}
+  }
+  if (!fhNewsCache.length) {
+    try {
+      await loadFinnhubNews();    // fills fhNewsCache[]
+    } catch(e) {}
+  }
+
+  // 4. Zeitgeist — pre-warm cache so first message is instant
+  fetchZeitgeist().catch(()=>{});
+
+  // Done
+  const sources = [
+    traders.length    && `${traders.length} traders`,
+    kolList.length    && `${kolList.length} KOLs`,
+    pulseRaw.length   && `${pulseRaw.length} perps`,
+    rssNewsCache.length && `${rssNewsCache.length} news`,
+  ].filter(Boolean).join(' · ');
+
+  setStatus('● ONLINE' + (sources ? `  —  ${sources}` : ''), '#86efac');
+  console.log('[Lucid] data bootstrap complete:', sources);
 }
 
 function updateLucidStatus(online) {
@@ -9523,52 +9667,62 @@ function removeLucidTyping() {
 
 // ── Send message ──────────────────────────────────────────
 async function lucidSend() {
-  const input  = document.getElementById('lucidInput');
+  const input   = document.getElementById('lucidInput');
   const rawText = input?.value?.trim();
   if (!rawText) return;
 
-  const apiKey = sessionStorage.getItem(LUCID_SS_KEY);
-  if (!apiKey) { lucidShowKeyModal(); return; }
+  // ── Resolve endpoint + headers ──────────────────────────────────────
+  // On localhost → proxy handles the key (no modal ever)
+  // On GitHub Pages → direct Anthropic API (needs key from sessionStorage)
+  let endpoint, reqHeaders;
+  if (IS_LOCAL) {
+    endpoint   = 'http://localhost:3001/lucid';
+    reqHeaders = { 'Content-Type': 'application/json' };
+  } else {
+    const apiKey = sessionStorage.getItem(LUCID_SS_KEY);
+    if (!apiKey) { lucidShowKeyModal(); return; }
+    endpoint   = 'https://api.anthropic.com/v1/messages';
+    reqHeaders = {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta':    'messages-2023-12-15',
+    };
+  }
 
   input.value = '';
-  input.style.height = '';
-
-  // Show user bubble
   appendLucidMsg(rawText, 'user');
-
-  // Add to history
   lucidHistory.push({ role: 'user', content: rawText });
 
-  // Build context-enriched user content
-  const ctx       = buildLucidContext();
-  const messagesWithCtx = lucidHistory.map((m, i) => {
-    // Inject context into the last user message
-    if (i === lucidHistory.length - 1 && m.role === 'user') {
-      return { role: 'user', content: m.content + '\n\n' + ctx };
-    }
-    return m;
-  });
-
-  // Show typing
+  // ── Build rich context (async — pulls from all ARX data + zeitgeist) ─
   showLucidTyping();
+  const ctx = await buildLucidContext();
 
-  // ── Streaming call to Anthropic ──
+  const messagesWithCtx = lucidHistory.map((m, i) =>
+    (i === lucidHistory.length - 1 && m.role === 'user')
+      ? { role: 'user', content: m.content + '\n\n' + ctx }
+      : m
+  );
+
+  // ── Streaming call ────────────────────────────────────────────────────
   let assistantText = '';
   let streamBubble  = null;
   let streamWrapper = null;
 
+  const renderMd = txt => txt
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
+    .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
+    .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
+    .replace(/\n/g,'<br>');
+
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type':       'application/json',
-        'x-api-key':          apiKey,
-        'anthropic-version':  '2023-06-01',
-        'anthropic-beta':     'messages-2023-12-15',
-      },
+      headers: reqHeaders,
       body: JSON.stringify({
         model:      'claude-sonnet-4-6',
-        max_tokens: 1500,
+        max_tokens: 2000,
         system:     buildLucidSystem(),
         messages:   messagesWithCtx,
         stream:     true,
@@ -9582,70 +9736,54 @@ async function lucidSend() {
 
     removeLucidTyping();
 
-    // Create streaming bubble
-    const container = document.getElementById('lucidMessages');
-    streamWrapper = document.createElement('div');
+    const container  = document.getElementById('lucidMessages');
+    streamWrapper    = document.createElement('div');
     streamWrapper.className = 'lucid-msg lucid-msg-ai';
-    streamBubble = document.createElement('div');
-    streamBubble.className = 'lucid-bubble';
+    streamBubble     = document.createElement('div');
+    streamBubble.className  = 'lucid-bubble';
     streamWrapper.appendChild(streamBubble);
     container.appendChild(streamWrapper);
 
-    // Read SSE stream
     const reader  = res.body.getReader();
     const decoder = new TextDecoder();
-    let   buffer  = '';
+    let   buf     = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop(); // keep incomplete line
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6).trim();
         if (data === '[DONE]') break;
         try {
-          const parsed = JSON.parse(data);
-          if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta') {
-            assistantText += parsed.delta.text;
-            // Live render
-            streamBubble.innerHTML = assistantText
-              .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-              .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
-              .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
-              .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
-              .replace(/\n/g,'<br>') + '<span style="animation:lucidDot .8s infinite;opacity:.5">▍</span>';
+          const p = JSON.parse(data);
+          if (p.type === 'content_block_delta' && p.delta?.type === 'text_delta') {
+            assistantText += p.delta.text;
+            streamBubble.innerHTML = renderMd(assistantText) +
+              '<span style="animation:lucidDot .8s infinite;opacity:.5">▍</span>';
             container.scrollTop = container.scrollHeight;
           }
         } catch(e) {}
       }
     }
 
-    // Final render (remove cursor)
-    if (streamBubble) {
-      streamBubble.innerHTML = assistantText
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
-        .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
-        .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
-        .replace(/\n/g,'<br>');
-    }
-
-    // Save to history
+    if (streamBubble) streamBubble.innerHTML = renderMd(assistantText);
     lucidHistory.push({ role: 'assistant', content: assistantText });
     try { sessionStorage.setItem(LUCID_HIST_SS, JSON.stringify(lucidHistory)); } catch(e) {}
 
   } catch(err) {
     removeLucidTyping();
     if (streamWrapper) streamWrapper.remove();
-    const errBubble = appendLucidMsg('', 'ai');
-    if (errBubble) errBubble.innerHTML =
-      '<span style="color:#f87171;font-size:10px">⚠ ERROR: ' +
-      err.message.replace(/</g,'&lt;') + '</span><br>' +
-      '<span style="color:rgba(168,85,247,.4);font-size:9px">Check your API key in ⚙ API KEY</span>';
+    const tip = IS_LOCAL
+      ? 'Make sure arx_kol_proxy.py is running and arx_config.py has your key.'
+      : 'Check your API key in ⚙ API KEY';
+    const b = appendLucidMsg('', 'ai');
+    if (b) b.innerHTML = `<span style="color:#f87171;font-size:10px">⚠ ${err.message.replace(/</g,'&lt;')}</span><br>`
+      + `<span style="color:rgba(168,85,247,.4);font-size:9px">${tip}</span>`;
   }
 }
 </script>
