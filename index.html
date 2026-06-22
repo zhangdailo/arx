@@ -8018,92 +8018,145 @@ function countBadgedPositions(coin, badgeName) {
   return n;
 }
 
-// ── 5-Factor Signal Scorer (0–100) ───────────────────────
+// ── 7-Factor Signal Scorer (0–100) ───────────────────────
 //
-//  F1  Trader Quality        25 pts  Elite/Proven weighted count
-//  F2  Directional Conviction 20 pts  how one-sided is the cohort
-//  F3  Contrarian Premium     20 pts  buying dips / shorting rips
-//  F4  Funding Alignment      20 pts  funding tailwind vs headwind
-//  F5  Market Weight          15 pts  tracked notional as % of OI
+//  F1  Trader Quality        20 pts  Elite/Proven weighted count
+//  F2  Directional Conviction 15 pts  how one-sided is the cohort
+//  F3  Contrarian Premium     15 pts  buying dips / shorting rips
+//  F4  Funding Alignment      15 pts  funding tailwind vs headwind
+//  F5  Market Weight          10 pts  tracked notional as % of OI
+//  F6  KOL Alignment          15 pts  social KOL wallets in same direction
+//  F7  News Narrative         10 pts  coin in recent feeds + sentiment
 //
 function scoreBlastSignal(entry) {
   const mkt     = entry.mkt || {};
   const chg24   = parseFloat(mkt.change24h || 0);
   const funding = parseFloat(mkt.funding   || 0);
-  const fundApr = funding * 876000;   // per-8h fraction → APR %
+  const fundApr = funding * 876000;
   const oi      = parseFloat(mkt.oi || 0);
   const isLong  = (entry.netBias || 0) >= 0;
   const hasPos  = entry.longCount > 0 || entry.shortCount > 0;
   const reasons = [];
   let   total   = 0;
 
-  // ── F1: Trader Quality (max 25) ─────────────────────────
+  // ── F1: Trader Quality (max 20) ─────────────────────────
   let f1 = 0;
   if (hasPos) {
     const eliteN  = countBadgedPositions(entry.coin, 'Elite');
     const provenN = countBadgedPositions(entry.coin, 'Proven');
     const wallets = (entry.longCount || 0) + (entry.shortCount || 0);
     const weight  = eliteN * 3 + provenN * 2 + Math.max(wallets - eliteN - provenN, 0);
-    f1 = wallets > 0 ? Math.min((weight / (wallets * 3)) * 25, 25) : 0;
+    f1 = wallets > 0 ? Math.min((weight / (wallets * 3)) * 20, 20) : 0;
     if (eliteN  > 0) reasons.push(`${eliteN} Elite trader${eliteN>1?'s':''} in position`);
     if (provenN > 0) reasons.push(`${provenN} Proven trader${provenN>1?'s':''} aligned`);
   }
 
-  // ── F2: Directional Conviction (max 20) ─────────────────
+  // ── F2: Directional Conviction (max 15) ─────────────────
   const conv = Math.abs(entry.netBias || 0);
-  const f2   = conv / 100 * 20;
+  const f2   = conv / 100 * 15;
   if (conv >= 80) reasons.push(`${conv.toFixed(0)}% one-directional — very high conviction`);
   else if (conv >= 60) reasons.push(`${conv.toFixed(0)}% bias — strong directional lean`);
 
-  // ── F3: Contrarian Premium (max 20) ─────────────────────
-  // Best alpha historically: smart money opposite to recent price action
-  let f3 = 5; // neutral base
-  if (isLong  && chg24 <= -5)  { f3 = 20; reasons.push(`Buying the dip: price −${Math.abs(chg24).toFixed(1)}% 24h`); }
-  else if (isLong  && chg24 <= -2)  { f3 = 15; reasons.push(`Accumulating on weakness (−${Math.abs(chg24).toFixed(1)}%)`); }
-  else if (!isLong && chg24 >= 5)   { f3 = 20; reasons.push(`Shorting overbought: +${chg24.toFixed(1)}% 24h`); }
-  else if (!isLong && chg24 >= 2)   { f3 = 15; reasons.push(`Distributing into strength (+${chg24.toFixed(1)}%)`); }
-  else if (isLong  && chg24 >= 3)   { f3 = 7;  reasons.push(`Momentum long — chasing +${chg24.toFixed(1)}%`); }
-  else if (!isLong && chg24 <= -3)  { f3 = 7;  reasons.push(`Momentum short — price −${Math.abs(chg24).toFixed(1)}%`); }
+  // ── F3: Contrarian Premium (max 15) ─────────────────────
+  let f3 = 4;
+  if      (isLong  && chg24 <= -5)  { f3 = 15; reasons.push(`Buying the dip: price −${Math.abs(chg24).toFixed(1)}% 24h`); }
+  else if (isLong  && chg24 <= -2)  { f3 = 11; reasons.push(`Accumulating on weakness (−${Math.abs(chg24).toFixed(1)}%)`); }
+  else if (!isLong && chg24 >= 5)   { f3 = 15; reasons.push(`Shorting overbought: +${chg24.toFixed(1)}% 24h`); }
+  else if (!isLong && chg24 >= 2)   { f3 = 11; reasons.push(`Distributing into strength (+${chg24.toFixed(1)}%)`); }
+  else if (isLong  && chg24 >= 3)   { f3 = 5;  reasons.push(`Momentum long — chasing +${chg24.toFixed(1)}%`); }
+  else if (!isLong && chg24 <= -3)  { f3 = 5;  reasons.push(`Momentum short — price −${Math.abs(chg24).toFixed(1)}%`); }
 
-  // ── F4: Funding Alignment (max 20) ─────────────────────
-  // Ideal: our position direction = the side NOT paying funding
+  // ── F4: Funding Alignment (max 15) ─────────────────────
   const absApr = Math.abs(fundApr);
-  let f4 = 10; // neutral
+  let f4 = 7;
   if (isLong && fundApr < 0) {
-    // Shorts paying → tailwind for longs (free carry + squeeze pressure)
-    f4 = Math.min(absApr / 40 * 20, 20);
+    f4 = Math.min(absApr / 40 * 15, 15);
     if (absApr > 15) reasons.push(`Shorts paying ${absApr.toFixed(1)}% APR — tailwind for longs`);
   } else if (!isLong && fundApr > 0) {
-    // Longs paying → tailwind for shorts
-    f4 = Math.min(absApr / 40 * 20, 20);
+    f4 = Math.min(absApr / 40 * 15, 15);
     if (absApr > 15) reasons.push(`Longs paying ${absApr.toFixed(1)}% APR — tailwind for shorts`);
   } else if (isLong && fundApr > 50) {
-    // Very expensive carry against us
-    f4 = 2; reasons.push(`⚠️ Longs paying ${fundApr.toFixed(1)}% APR — costly carry`);
+    f4 = 2; reasons.push(`⚠ Longs paying ${fundApr.toFixed(1)}% APR — costly carry`);
   } else if (!isLong && fundApr < -50) {
-    f4 = 2; reasons.push(`⚠️ Shorts paying ${absApr.toFixed(1)}% APR — costly carry`);
+    f4 = 2; reasons.push(`⚠ Shorts paying ${absApr.toFixed(1)}% APR — costly carry`);
   }
 
-  // ── F5: Market Weight (max 15) ─────────────────────────
+  // ── F5: Market Weight (max 10) ─────────────────────────
   let f5 = 0;
   if (oi > 0 && entry.total > 0) {
     const pctOI = entry.total / oi * 100;
-    f5 = Math.min(pctOI * 3, 15); // full score at 5% of OI
+    f5 = Math.min(pctOI * 2, 10);
     if (pctOI >= 2) reasons.push(`Tracked wallets hold ${pctOI.toFixed(1)}% of total OI`);
   }
 
-  total = Math.round(Math.min(f1 + f2 + f3 + f4 + f5, 100));
+  // ── F6: KOL Alignment (max 15) ──────────────────────────
+  // Cross-reference kolList[] wallet addresses with livePos
+  let f6 = 0;
+  try {
+    if (typeof kolList !== 'undefined' && kolList.length > 0 && typeof livePos !== 'undefined') {
+      let kolAlignedCount = 0, kolAgainstCount = 0;
+      const topKols = [...kolList].filter(k=>k.pnl!=null).sort((a,b)=>(b.pnl||0)-(a.pnl||0)).slice(0,50);
+      const topKolAddrs = new Set(topKols.map(k=>(k.address||'').toLowerCase()));
+
+      for (const [addr, positions] of livePos) {
+        if (!topKolAddrs.has(addr.toLowerCase())) continue;
+        const coinPos = positions.find(p => p.coin === entry.coin);
+        if (!coinPos) continue;
+        if (coinPos.side === (isLong ? 'long' : 'short')) kolAlignedCount++;
+        else kolAgainstCount++;
+      }
+      if (kolAlignedCount > 0) {
+        f6 = Math.min(kolAlignedCount * 5, 15);
+        reasons.push(`${kolAlignedCount} top KOL wallet${kolAlignedCount>1?'s':''} ${isLong?'long':'short'} ${entry.coin}`);
+      }
+      if (kolAgainstCount > 0 && kolAlignedCount === 0) {
+        f6 = 0;
+        reasons.push(`⚠ ${kolAgainstCount} top KOL${kolAgainstCount>1?'s':''} positioned opposite`);
+      }
+    }
+  } catch(e) {}
+
+  // ── F7: News Narrative (max 10) ─────────────────────────
+  let f7 = 0;
+  try {
+    const allNews = [];
+    if (typeof fhNewsCache  !== 'undefined') allNews.push(...fhNewsCache.slice(0,30).map(n=>({text:(n.headline||'').toLowerCase()})));
+    if (typeof rssNewsCache !== 'undefined') allNews.push(...rssNewsCache.slice(0,30).map(n=>({text:(n.title||'').toLowerCase()})));
+
+    const coinLower = entry.coin.toLowerCase();
+    const relevant  = allNews.filter(n => n.text.includes(coinLower));
+
+    if (relevant.length > 0) {
+      const bull = ['bullish','buy','long','surge','rally','pump','gain','breakout','high','accumul','launch','partner'];
+      const bear = ['bearish','sell','short','drop','fall','dump','loss','crash','low','distribut','hack','exploit'];
+      let bScore = 0, dScore = 0;
+      relevant.forEach(n => {
+        bull.forEach(k => { if (n.text.includes(k)) bScore++; });
+        bear.forEach(k => { if (n.text.includes(k)) dScore++; });
+      });
+      const aligned = (isLong && bScore >= dScore) || (!isLong && dScore > bScore);
+      f7 = relevant.length >= 3 ? 8 : relevant.length >= 1 ? 5 : 0;
+      if (aligned && f7 > 0) f7 = Math.min(f7 + 2, 10);
+      const sentiment = bScore > dScore ? 'bullish' : dScore > bScore ? 'bearish' : 'neutral';
+      reasons.push(`${relevant.length} news item${relevant.length>1?'s':''} on ${entry.coin} — ${sentiment} tone`);
+    }
+  } catch(e) {}
+
+  total = Math.round(Math.min(f1 + f2 + f3 + f4 + f5 + f6 + f7, 100));
 
   return {
     total,
-    factors: { f1: Math.round(f1), f2: Math.round(f2), f3: Math.round(f3), f4: Math.round(f4), f5: Math.round(f5) },
+    factors: {
+      f1: Math.round(f1), f2: Math.round(f2), f3: Math.round(f3), f4: Math.round(f4),
+      f5: Math.round(f5), f6: Math.round(f6), f7: Math.round(f7),
+    },
     grade:      total >= 75 ? 'A' : total >= 60 ? 'B' : total >= 40 ? 'C' : 'D',
     gradeColor: total >= 75 ? '#10b981' : total >= 60 ? '#f59e0b' : total >= 40 ? '#f97316' : '#ef4444',
     gradeLabel: total >= 75 ? 'High confidence — act on this' :
                 total >= 60 ? 'Moderate confidence — watch closely' :
                 total >= 40 ? 'Weak signal — informational only' :
                               'Low confidence — likely noise',
-    reasons: reasons.slice(0, 4),
+    reasons: reasons.slice(0, 5),
   };
 }
 
@@ -8435,10 +8488,58 @@ function formatBlastText(entry, sig, scoreResult) {
   if (scoreResult) {
     lines.push('');
     lines.push(`🎯 Signal Score: ${scoreResult.total}/100 (Grade ${scoreResult.grade}) — ${scoreResult.gradeLabel}`);
+    const f = scoreResult.factors || {};
+    const factorParts = [];
+    factorParts.push(`Quality ${f.f1||0}/20`);
+    factorParts.push(`Conviction ${f.f2||0}/15`);
+    factorParts.push(`Contrarian ${f.f3||0}/15`);
+    factorParts.push(`Funding ${f.f4||0}/15`);
+    factorParts.push(`MktWt ${f.f5||0}/10`);
+    if ((f.f6||0) > 0) factorParts.push(`KOL ${f.f6}/15`);
+    if ((f.f7||0) > 0) factorParts.push(`News ${f.f7}/10`);
+    lines.push(`   ↳ ${factorParts.join(' · ')}`);
     if (scoreResult.reasons?.length) {
       scoreResult.reasons.forEach(r => lines.push(`   • ${r}`));
     }
   }
+
+  // ── KOL wallet context ─────────────────────────────────
+  try {
+    if (typeof kolList !== 'undefined' && kolList.length > 0 && typeof livePos !== 'undefined') {
+      const isLong = (entry.netBias || 0) >= 0;
+      const topKolAddrs = new Set(
+        [...kolList].filter(k=>k.pnl!=null).sort((a,b)=>(b.pnl||0)-(a.pnl||0))
+                   .slice(0,50).map(k=>(k.address||'').toLowerCase())
+      );
+      const alignedKols = [];
+      for (const [addr, positions] of livePos) {
+        if (!topKolAddrs.has(addr.toLowerCase())) continue;
+        const coinPos = positions.find(p => p.coin === entry.coin);
+        if (coinPos && coinPos.side === (isLong ? 'long' : 'short')) {
+          const kol = kolList.find(k=>(k.address||'').toLowerCase()===addr.toLowerCase());
+          if (kol) alignedKols.push(kol.twitterName || kol.handle || addr.slice(0,8)+'…');
+        }
+      }
+      if (alignedKols.length > 0) {
+        lines.push('');
+        lines.push(`🐦 KOL Wallets Aligned (${alignedKols.length}): ${alignedKols.slice(0,3).join(', ')}${alignedKols.length>3?' + more':''}`);
+      }
+    }
+  } catch(e) {}
+
+  // ── News context ───────────────────────────────────────
+  try {
+    const allNews = [];
+    if (typeof fhNewsCache  !== 'undefined') allNews.push(...fhNewsCache.slice(0,20).map(n=>n.headline||''));
+    if (typeof rssNewsCache !== 'undefined') allNews.push(...rssNewsCache.slice(0,20).map(n=>n.title||''));
+    const coinLower = entry.coin.toLowerCase();
+    const relevant  = allNews.filter(h => h.toLowerCase().includes(coinLower)).slice(0,2);
+    if (relevant.length > 0) {
+      lines.push('');
+      lines.push(`📰 Recent News:`);
+      relevant.forEach(h => lines.push(`   • ${h.slice(0,80)}${h.length>80?'…':''}`));
+    }
+  } catch(e) {}
 
   lines.push('');
   lines.push('─'.repeat(44));
@@ -8461,7 +8562,7 @@ function buildBlastCardHTML(entry, sig, scoreResult, text, ts, idx) {
   const fundingApr  = fundingRate * 876000;
   const hasPos      = entry.longCount > 0 || entry.shortCount > 0;
   const netAmt      = Math.abs(entry.longNotional - entry.shortNotional);
-  const sr          = scoreResult || { total:0, grade:'D', gradeColor:'#6b7280', gradeLabel:'', reasons:[], factors:{f1:0,f2:0,f3:0,f4:0,f5:0} };
+  const sr          = scoreResult || { total:0, grade:'D', gradeColor:'#6b7280', gradeLabel:'', reasons:[], factors:{f1:0,f2:0,f3:0,f4:0,f5:0,f6:0,f7:0} };
 
   const now  = new Date(ts);
   const sgt  = new Date(now.getTime() + 8 * 3600000);
@@ -8499,9 +8600,9 @@ function buildBlastCardHTML(entry, sig, scoreResult, text, ts, idx) {
           <div style="padding:3px 9px;border-radius:20px;background:${sr.gradeColor}22;border:1px solid ${sr.gradeColor}55;font-size:13px;font-weight:800;color:${sr.gradeColor}">Grade ${sr.grade}</div>
         </div>
       </div>
-      <!-- 5 factor bars -->
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:10px">
-        ${[['Quality','f1',25,'#a78bfa'],['Conviction','f2',20,'#60a5fa'],['Contrarian','f3',20,'#34d399'],['Funding','f4',20,'#f59e0b'],['Mkt Weight','f5',15,'#f472b6']].map(([lbl,k,max,col])=>`
+      <!-- 7 factor bars (4-col grid → rows of 4 + 3) -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+        ${[['Quality','f1',20,'#a78bfa'],['Conviction','f2',15,'#60a5fa'],['Contrarian','f3',15,'#34d399'],['Funding','f4',15,'#f59e0b'],['Mkt Wt','f5',10,'#f472b6'],['KOL Align','f6',15,'#c084fc'],['News','f7',10,'#38bdf8']].map(([lbl,k,max,col])=>`
         <div>
           <div style="font-size:9px;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lbl}</div>
           <div style="font-size:11px;font-weight:700;color:${col}">${sr.factors[k]}/${max}</div>
