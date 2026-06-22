@@ -4,6 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ARX — Trader Intelligence Dashboard</title>
+  <!-- ── ARX Auth Guard ── Redirect to login if no valid session ── -->
+  <script>
+    (function(){
+      var SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
+      try {
+        var raw = sessionStorage.getItem('arx_auth');
+        if (!raw) throw new Error('no session');
+        var s = JSON.parse(raw);
+        if (!s || !s.uid || !s.ts) throw new Error('bad session');
+        if (Date.now() - s.ts > SESSION_TTL) {
+          sessionStorage.removeItem('arx_auth');
+          throw new Error('expired');
+        }
+        // Session valid — expose auth context globally
+        window.ARX_USER = s;
+      } catch(e) {
+        window.location.replace('login.html');
+      }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -1284,6 +1304,11 @@
       </div>
       <button class="refresh-btn" id="refreshBtn">↻ Refresh</button>
       <span id="updatedAt">Loading…</span>
+      <button class="refresh-btn" id="logoutBtn" title="Sign out of ARX Citadel"
+              style="border-color:rgba(201,168,76,.35);color:rgba(201,168,76,.75);margin-left:6px"
+              onclick="(function(){sessionStorage.removeItem('arx_auth');window.location.replace('login.html');})()">
+        ⬡ Exit
+      </button>
     </div>
   </div>
   <!-- Row 2: Finnhub Macro Ticker Strip -->
@@ -1521,6 +1546,8 @@
         <button class="chip active" data-pf="all">All</button>
         <button class="chip" data-pf="crypto">Crypto</button>
         <button class="chip" data-pf="rwa">RWAs</button>
+        <button class="chip" data-pf="usstocks" style="color:#60a5fa">🇺🇸 US Stocks</button>
+        <button class="chip" data-pf="industry" style="color:#fbbf24">🏭 Industry</button>
       </div>
       <div class="pulse-right">
         <div class="pulse-legend">
@@ -2540,17 +2567,22 @@ const FH_WS   = 'wss://ws.finnhub.io';
 const FH_RATE_LIMIT  = 54;            // calls/min we allow ourselves
 const FH_INTERVAL_MS = Math.ceil(60000 / FH_RATE_LIMIT); // ~1111ms between calls
 
-// Finnhub REST symbols → macro strip IDs
-const FH_MACRO_SYMBOLS = [
-  { sym:'BINANCE:BTCUSDT',  id:'BTC',  fmt:'$', dp:0  },
-  { sym:'BINANCE:ETHUSDT',  id:'ETH',  fmt:'$', dp:0  },
-  { sym:'BINANCE:SOLUSDT',  id:'SOL',  fmt:'$', dp:2  },
-  { sym:'BINANCE:BNBUSDT',  id:'BNB',  fmt:'$', dp:1  },
-  { sym:'SPY',              id:'SPY',  fmt:'$', dp:2  },
-  { sym:'QQQ',              id:'QQQ',  fmt:'$', dp:2  },
-  { sym:'GLD',              id:'GLD',  fmt:'$', dp:2  },
-  { sym:'OANDA:USD_JPY',    id:'DX',   fmt:'¥', dp:2  },
+// Crypto prices: Binance public API (no key, always works from any origin)
+const BINANCE_CRYPTO_MAP = [
+  { symbol:'BTCUSDT',  id:'BTC',  dp:0 },
+  { symbol:'ETHUSDT',  id:'ETH',  dp:0 },
+  { symbol:'SOLUSDT',  id:'SOL',  dp:2 },
+  { symbol:'BNBUSDT',  id:'BNB',  dp:1 },
 ];
+// Stocks / FX: Finnhub REST (needs valid key, market-hours only)
+const FH_STOCK_SYMBOLS = [
+  { sym:'SPY',           id:'SPY',  fmt:'$', dp:2 },
+  { sym:'QQQ',           id:'QQQ',  fmt:'$', dp:2 },
+  { sym:'GLD',           id:'GLD',  fmt:'$', dp:2 },
+  { sym:'OANDA:USD_JPY', id:'DX',   fmt:'¥', dp:2 },
+];
+// Legacy alias used by older code paths
+const FH_MACRO_SYMBOLS = FH_STOCK_SYMBOLS;
 
 // WebSocket symbols for real-time trade streaming (max 45)
 const FH_WS_SYMBOLS = [
@@ -2661,8 +2693,22 @@ function updateMacroTicker(id, price, pct, fmt='$', dp=2) {
 
 // ── Load all macro quotes (REST) ────────────────────────
 async function loadFinnhubMacro() {
-  // Fire all quote requests through rate limiter in parallel
-  await Promise.allSettled(FH_MACRO_SYMBOLS.map(async ({ sym, id, fmt, dp }) => {
+  // 1. Crypto via Binance public API — no key, CORS-enabled, always works
+  try {
+    const syms = encodeURIComponent(JSON.stringify(BINANCE_CRYPTO_MAP.map(m => m.symbol)));
+    const r = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=${syms}`,
+                          { signal: AbortSignal.timeout(6000) });
+    if (r.ok) {
+      const list = await r.json();
+      list.forEach(d => {
+        const m = BINANCE_CRYPTO_MAP.find(x => x.symbol === d.symbol);
+        if (m && d.lastPrice) updateMacroTicker(m.id, parseFloat(d.lastPrice), parseFloat(d.priceChangePercent || 0), '$', m.dp);
+      });
+    }
+  } catch(e) { console.warn('[Binance macro]', e.message); }
+
+  // 2. Stocks / FX via Finnhub (needs valid API key; silently skips if key is wrong)
+  await Promise.allSettled(FH_STOCK_SYMBOLS.map(async ({ sym, id, fmt, dp }) => {
     try {
       const data = await fhGet('/quote', { symbol: sym });
       if (data && data.c) updateMacroTicker(id, data.c, data.dp ?? 0, fmt, dp);
@@ -3041,6 +3087,44 @@ function connectFinnhubWS() {
   };
 }
 
+// ── Binance WebSocket — real-time crypto prices (no API key needed) ─────────
+let bnWs = null;
+let bnWsRetries = 0;
+const BN_WS = 'wss://stream.binance.com:9443/stream?streams=btcusdt@ticker/ethusdt@ticker/solusdt@ticker/bnbusdt@ticker';
+const BN_ID_MAP = { BTCUSDT:'BTC', ETHUSDT:'ETH', SOLUSDT:'SOL', BNBUSDT:'BNB' };
+const BN_DP_MAP = { BTC:0, ETH:0, SOL:2, BNB:1 };
+
+function connectBinanceWS() {
+  if (bnWs && bnWs.readyState <= 1) return;
+  bnWs = new WebSocket(BN_WS);
+  bnWs.onopen  = () => { bnWsRetries = 0; console.log('[BN WS] Connected'); };
+  bnWs.onmessage = e => {
+    try {
+      const { data: d } = JSON.parse(e.data);
+      if (!d || !d.s) return;
+      const id = BN_ID_MAP[d.s];
+      if (!id) return;
+      const price = parseFloat(d.c);   // current price
+      const pct   = parseFloat(d.P);   // 24h % change
+      if (price > 0) {
+        updateMacroTicker(id, price, pct, '$', BN_DP_MAP[id] ?? 2);
+        // Flash the ticker element
+        const el = document.getElementById('mt-' + id);
+        if (el) {
+          el.style.background = 'rgba(52,211,153,0.07)';
+          setTimeout(() => { if(el) el.style.background = ''; }, 250);
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  };
+  bnWs.onerror = e => console.warn('[BN WS] error');
+  bnWs.onclose = () => {
+    bnWsRetries++;
+    const delay = Math.min(60000, 3000 * Math.pow(1.5, bnWsRetries));
+    setTimeout(connectBinanceWS, delay);
+  };
+}
+
 // ── Finnhub init — called on page load ──────────────────
 async function initFinnhub() {
   // Build RSS source filter chips immediately
@@ -3052,7 +3136,9 @@ async function initFinnhub() {
     loadFinnhubMarketStatus(),
     loadFinnhubNews(),
   ]);
-  // Start WebSocket for real-time prices
+  // Start Binance WebSocket for real-time crypto (always works, no key)
+  connectBinanceWS();
+  // Start Finnhub WebSocket for real-time prices (if key is valid)
   connectFinnhubWS();
 
   // Start RSS feeds in background (doesn't block main init)
@@ -4234,6 +4320,404 @@ function renderRwaStocksPanel() {
   panel.innerHTML = html;
 }
 
+// ══════════════════════════════════════════════════════════════
+// US STOCKS HEATMAP (Yahoo Finance via allorigins proxy)
+// ══════════════════════════════════════════════════════════════
+const US_STOCKS = [
+  // ── Information Technology ─────────────────────────────────
+  { sym:'AAPL',  name:'Apple',          sector:'Technology',     mktW:7.5 },
+  { sym:'MSFT',  name:'Microsoft',      sector:'Technology',     mktW:6.8 },
+  { sym:'NVDA',  name:'NVIDIA',         sector:'Technology',     mktW:6.2 },
+  { sym:'AVGO',  name:'Broadcom',       sector:'Technology',     mktW:1.5 },
+  { sym:'ORCL',  name:'Oracle',         sector:'Technology',     mktW:1.0 },
+  { sym:'ADBE',  name:'Adobe',          sector:'Technology',     mktW:0.8 },
+  { sym:'CSCO',  name:'Cisco',          sector:'Technology',     mktW:0.9 },
+  { sym:'AMD',   name:'AMD',            sector:'Technology',     mktW:0.8 },
+  { sym:'QCOM',  name:'Qualcomm',       sector:'Technology',     mktW:0.7 },
+  { sym:'NOW',   name:'ServiceNow',     sector:'Technology',     mktW:0.7 },
+  { sym:'INTU',  name:'Intuit',         sector:'Technology',     mktW:0.6 },
+  { sym:'TXN',   name:'Texas Instrs.',  sector:'Technology',     mktW:0.5 },
+  { sym:'AMAT',  name:'Applied Matl.',  sector:'Technology',     mktW:0.5 },
+  { sym:'MU',    name:'Micron',         sector:'Technology',     mktW:0.4 },
+  { sym:'LRCX',  name:'Lam Research',   sector:'Technology',     mktW:0.4 },
+  // ── Communication Services ─────────────────────────────────
+  { sym:'GOOGL', name:'Alphabet',       sector:'Communication',  mktW:4.2 },
+  { sym:'META',  name:'Meta',           sector:'Communication',  mktW:3.1 },
+  { sym:'NFLX',  name:'Netflix',        sector:'Communication',  mktW:0.9 },
+  { sym:'DIS',   name:'Disney',         sector:'Communication',  mktW:0.5 },
+  { sym:'CMCSA', name:'Comcast',        sector:'Communication',  mktW:0.5 },
+  { sym:'T',     name:'AT&T',           sector:'Communication',  mktW:0.5 },
+  { sym:'VZ',    name:'Verizon',        sector:'Communication',  mktW:0.4 },
+  // ── Consumer Discretionary ─────────────────────────────────
+  { sym:'AMZN',  name:'Amazon',         sector:'Cons. Discret.', mktW:4.3 },
+  { sym:'TSLA',  name:'Tesla',          sector:'Cons. Discret.', mktW:2.0 },
+  { sym:'HD',    name:'Home Depot',     sector:'Cons. Discret.', mktW:0.7 },
+  { sym:'MCD',   name:"McDonald's",     sector:'Cons. Discret.', mktW:0.5 },
+  { sym:'BKNG',  name:'Booking',        sector:'Cons. Discret.', mktW:0.5 },
+  { sym:'LOW',   name:"Lowe's",         sector:'Cons. Discret.', mktW:0.5 },
+  { sym:'NKE',   name:'Nike',           sector:'Cons. Discret.', mktW:0.4 },
+  { sym:'TJX',   name:'TJX',            sector:'Cons. Discret.', mktW:0.4 },
+  // ── Consumer Staples ───────────────────────────────────────
+  { sym:'WMT',   name:'Walmart',        sector:'Cons. Staples',  mktW:1.1 },
+  { sym:'COST',  name:'Costco',         sector:'Cons. Staples',  mktW:1.0 },
+  { sym:'PG',    name:'P&G',            sector:'Cons. Staples',  mktW:0.7 },
+  { sym:'KO',    name:'Coca-Cola',      sector:'Cons. Staples',  mktW:0.6 },
+  { sym:'PM',    name:'Philip Morris',  sector:'Cons. Staples',  mktW:0.5 },
+  { sym:'MDLZ',  name:'Mondelez',       sector:'Cons. Staples',  mktW:0.3 },
+  // ── Health Care ────────────────────────────────────────────
+  { sym:'LLY',   name:'Eli Lilly',      sector:'Healthcare',     mktW:2.1 },
+  { sym:'UNH',   name:'UnitedHealth',   sector:'Healthcare',     mktW:1.4 },
+  { sym:'JNJ',   name:'J&J',            sector:'Healthcare',     mktW:0.9 },
+  { sym:'MRK',   name:'Merck',          sector:'Healthcare',     mktW:0.7 },
+  { sym:'ABBV',  name:'AbbVie',         sector:'Healthcare',     mktW:0.7 },
+  { sym:'TMO',   name:'Thermo Fisher',  sector:'Healthcare',     mktW:0.5 },
+  { sym:'ABT',   name:'Abbott',         sector:'Healthcare',     mktW:0.5 },
+  { sym:'AMGN',  name:'Amgen',          sector:'Healthcare',     mktW:0.4 },
+  // ── Financials ─────────────────────────────────────────────
+  { sym:'BRK-B', name:'Berkshire B',    sector:'Financials',     mktW:2.0 },
+  { sym:'JPM',   name:'JPMorgan',       sector:'Financials',     mktW:1.8 },
+  { sym:'V',     name:'Visa',           sector:'Financials',     mktW:1.5 },
+  { sym:'MA',    name:'Mastercard',     sector:'Financials',     mktW:1.2 },
+  { sym:'BAC',   name:'Bank of Am.',    sector:'Financials',     mktW:0.8 },
+  { sym:'WFC',   name:'Wells Fargo',    sector:'Financials',     mktW:0.7 },
+  { sym:'GS',    name:'Goldman',        sector:'Financials',     mktW:0.6 },
+  { sym:'MS',    name:'Morgan Stanley', sector:'Financials',     mktW:0.5 },
+  { sym:'BLK',   name:'BlackRock',      sector:'Financials',     mktW:0.4 },
+  { sym:'SPGI',  name:'S&P Global',     sector:'Financials',     mktW:0.4 },
+  // ── Energy ─────────────────────────────────────────────────
+  { sym:'XOM',   name:'ExxonMobil',     sector:'Energy',         mktW:1.3 },
+  { sym:'CVX',   name:'Chevron',        sector:'Energy',         mktW:0.8 },
+  { sym:'COP',   name:'ConocoPhillips', sector:'Energy',         mktW:0.4 },
+  { sym:'EOG',   name:'EOG Resources',  sector:'Energy',         mktW:0.3 },
+  { sym:'SLB',   name:'SLB',            sector:'Energy',         mktW:0.2 },
+  // ── Industrials ────────────────────────────────────────────
+  { sym:'GE',    name:'GE Aerospace',   sector:'Industrials',    mktW:0.6 },
+  { sym:'CAT',   name:'Caterpillar',    sector:'Industrials',    mktW:0.5 },
+  { sym:'HON',   name:'Honeywell',      sector:'Industrials',    mktW:0.4 },
+  { sym:'DE',    name:'John Deere',     sector:'Industrials',    mktW:0.4 },
+  { sym:'UNP',   name:'Union Pacific',  sector:'Industrials',    mktW:0.4 },
+  { sym:'LMT',   name:'Lockheed M.',    sector:'Industrials',    mktW:0.4 },
+  { sym:'RTX',   name:'RTX',            sector:'Industrials',    mktW:0.4 },
+  { sym:'BA',    name:'Boeing',         sector:'Industrials',    mktW:0.3 },
+  // ── Materials ──────────────────────────────────────────────
+  { sym:'LIN',   name:'Linde',          sector:'Materials',      mktW:0.5 },
+  { sym:'APD',   name:'Air Products',   sector:'Materials',      mktW:0.2 },
+  { sym:'FCX',   name:'Freeport',       sector:'Materials',      mktW:0.2 },
+  { sym:'NEM',   name:'Newmont',        sector:'Materials',      mktW:0.2 },
+  // ── Real Estate ────────────────────────────────────────────
+  { sym:'PLD',   name:'Prologis',       sector:'Real Estate',    mktW:0.3 },
+  { sym:'AMT',   name:'Amer. Tower',    sector:'Real Estate',    mktW:0.3 },
+  { sym:'EQIX',  name:'Equinix',        sector:'Real Estate',    mktW:0.3 },
+  { sym:'CCI',   name:'Crown Castle',   sector:'Real Estate',    mktW:0.2 },
+  { sym:'PSA',   name:'Public Storage', sector:'Real Estate',    mktW:0.2 },
+  // ── Utilities ──────────────────────────────────────────────
+  { sym:'NEE',   name:'NextEra Energy', sector:'Utilities',      mktW:0.5 },
+  { sym:'DUK',   name:'Duke Energy',    sector:'Utilities',      mktW:0.3 },
+  { sym:'SO',    name:'Southern Co.',   sector:'Utilities',      mktW:0.3 },
+  { sym:'AEP',   name:'AEP',            sector:'Utilities',      mktW:0.2 },
+];
+
+// ── GICS Sector ETFs (11 sectors, sized by S&P 500 weight) ────
+const SECTOR_ETFS = [
+  { sym:'XLK',  name:'Information Technology', weight:32.0, color:'#60a5fa' },
+  { sym:'XLF',  name:'Financials',             weight:13.5, color:'#34d399' },
+  { sym:'XLV',  name:'Health Care',            weight:12.0, color:'#f87171' },
+  { sym:'XLY',  name:'Consumer Discret.',      weight:10.0, color:'#fb923c' },
+  { sym:'XLC',  name:'Communication Svcs',     weight: 8.5, color:'#a78bfa' },
+  { sym:'XLI',  name:'Industrials',            weight: 8.5, color:'#fbbf24' },
+  { sym:'XLP',  name:'Consumer Staples',       weight: 6.0, color:'#4ade80' },
+  { sym:'XLE',  name:'Energy',                 weight: 4.0, color:'#f59e0b' },
+  { sym:'XLRE', name:'Real Estate',            weight: 2.5, color:'#06b6d4' },
+  { sym:'XLU',  name:'Utilities',              weight: 2.5, color:'#8b5cf6' },
+  { sym:'XLB',  name:'Materials',              weight: 2.5, color:'#d97706' },
+];
+
+let usStocksCache = [];
+let usStocksLoaded = false;
+let sectorEtfCache = [];
+let sectorEtfLoaded = false;
+
+// ── Load US stocks via Yahoo Finance → allorigins proxy ────────
+async function loadYahooStocks() {
+  const symbols = US_STOCKS.map(s => s.sym).join(',');
+  const yfUrl   = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=regularMarketPrice,regularMarketChangePercent,marketCap,shortName`;
+  const proxy   = `https://api.allorigins.win/get?url=${encodeURIComponent(yfUrl)}`;
+  try {
+    const r = await fetch(proxy, { signal: AbortSignal.timeout(14000) });
+    if (!r.ok) throw new Error('allorigins HTTP ' + r.status);
+    const outer  = await r.json();
+    const inner  = JSON.parse(outer.contents);
+    const quotes = inner?.quoteResponse?.result || [];
+    const qMap   = new Map(quotes.map(q => [q.symbol, q]));
+    usStocksCache = US_STOCKS.map(s => {
+      const q = qMap.get(s.sym);
+      if (!q || !q.regularMarketPrice) return null;
+      return { ...s, price: q.regularMarketPrice, chgPct: q.regularMarketChangePercent || 0,
+               marketCap: q.marketCap || (s.mktW * 1e12), displayName: q.shortName || s.name };
+    }).filter(Boolean);
+    usStocksLoaded = true;
+    if (pulseFilter === 'usstocks') { updateUSStocksStats(); renderUSStocksHeatmap(); }
+  } catch(e) {
+    console.warn('[Yahoo stocks]', e.message);
+    // Fallback: use static weights as stand-in market cap (relative sizing preserved)
+    usStocksCache = US_STOCKS.map(s => ({...s, price:0, chgPct:0,
+      marketCap: s.mktW * 1e12, displayName: s.name }));
+    usStocksLoaded = true;
+    if (pulseFilter === 'usstocks') renderUSStocksHeatmap();
+  }
+}
+
+// ── Load sector ETFs via Finnhub ───────────────────────────────
+async function loadSectorETFs() {
+  try {
+    const results = await Promise.allSettled(
+      SECTOR_ETFS.map(async etf => {
+        const data = await fhGet('/quote', { symbol: etf.sym });
+        if (!data || !data.c) return null;
+        return { ...etf, price: data.c, chgPct: data.dp ?? 0, prevClose: data.pc || data.c };
+      })
+    );
+    sectorEtfCache = results.filter(r => r.status==='fulfilled' && r.value).map(r => r.value);
+    sectorEtfLoaded = true;
+    if (pulseFilter === 'industry') { updateIndustryStats(); renderIndustryHeatmap(); }
+  } catch(e) { console.warn('[Sector ETF]', e.message); }
+}
+
+// ── Stats bar for US Stocks mode ──────────────────────────────
+function updateUSStocksStats() {
+  if (!usStocksCache.length) return;
+  const loaded   = usStocksCache.filter(s => s.price > 0);
+  const totalMC  = loaded.reduce((s,d) => s+(d.marketCap||0), 0);
+  const avgChg   = loaded.length ? loaded.reduce((s,d)=>s+d.chgPct,0)/loaded.length : 0;
+  const sorted   = [...loaded].sort((a,b) => b.chgPct - a.chgPct);
+  const top = sorted[0], bot = sorted[sorted.length-1];
+  $('ps-assets').textContent = loaded.length + ' stocks';
+  $('ps-oi').textContent     = totalMC > 0 ? money(totalMC) : '—';
+  document.querySelector('#pulseStats .psc:nth-child(2) .psc-label').textContent = 'Mkt Cap';
+  $('ps-chg-label').textContent = 'Avg Change';
+  $('ps-chg').innerHTML = `<span class="${avgChg>=0?'pos':'neg'}">${avgChg>=0?'+':''}${num(avgChg,2)}%</span>`;
+  $('ps-top').textContent = top ? `${top.sym}  ${top.chgPct>=0?'+':''}${num(top.chgPct,2)}%` : '—';
+  $('ps-bot').textContent = bot ? `${bot.sym} ${num(bot.chgPct,2)}%` : '—';
+  $('ps-fund').textContent = loaded.length>0 ? `${loaded.filter(s=>s.chgPct>0).length}↑ ${loaded.filter(s=>s.chgPct<0).length}↓` : '—';
+  document.querySelector('#pulseStats .psc:nth-child(6) .psc-label').textContent = 'Breadth';
+}
+
+// ── Stats bar for Industry mode ───────────────────────────────
+function updateIndustryStats() {
+  const data   = sectorEtfCache.length ? sectorEtfCache.filter(s=>s.price>0) : [];
+  const avgChg = data.length ? data.reduce((s,d)=>s+d.chgPct,0)/data.length : 0;
+  const sorted = [...data].sort((a,b) => b.chgPct - a.chgPct);
+  const top = sorted[0], bot = sorted[sorted.length-1];
+  $('ps-assets').textContent = '11 sectors';
+  $('ps-oi').textContent     = 'SPDR ETFs';
+  document.querySelector('#pulseStats .psc:nth-child(2) .psc-label').textContent = 'Data Source';
+  $('ps-chg-label').textContent = 'Avg Change';
+  $('ps-chg').innerHTML = `<span class="${avgChg>=0?'pos':'neg'}">${avgChg>=0?'+':''}${num(avgChg,2)}%</span>`;
+  $('ps-top').textContent = top ? `${top.sym}  ${top.chgPct>=0?'+':''}${num(top.chgPct,2)}%` : '—';
+  $('ps-bot').textContent = bot ? `${bot.sym} ${num(bot.chgPct,2)}%` : '—';
+  $('ps-fund').textContent = '—';
+  document.querySelector('#pulseStats .psc:nth-child(6) .psc-label').textContent = 'Avg Funding APR';
+}
+
+// ── US Stocks Treemap ─────────────────────────────────────────
+function renderUSStocksHeatmap() {
+  if (!d3Loaded || typeof d3 === 'undefined') return;
+  const wrap = document.querySelector('.pulse-map-wrap');
+  const W = wrap.clientWidth || 1200, H = wrap.clientHeight || 640;
+
+  if (!usStocksCache.length) {
+    d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14">Loading US stocks via Yahoo Finance…</text>');
+    return;
+  }
+
+  // Group by sector
+  const sMap = new Map();
+  for (const s of usStocksCache) {
+    if (!sMap.has(s.sector)) sMap.set(s.sector, []);
+    sMap.get(s.sector).push(s);
+  }
+  const root = d3.hierarchy({ name:'root', children:[...sMap.entries()].map(([sec,stocks])=>({name:sec,children:stocks})) })
+    .sum(d => d.children ? 0 : (d.marketCap || d.mktW * 1e12))
+    .sort((a,b)=>(b.value||0)-(a.value||0));
+
+  d3.treemap().size([W,H]).paddingOuter(4).paddingInner(2).paddingTop(17).round(true)(root);
+
+  const svg = d3.select('#pulseSvg').attr('viewBox',`0 0 ${W} ${H}`).attr('preserveAspectRatio','xMidYMid meet');
+  svg.selectAll('*').remove();
+
+  // Sector group headers
+  const grps = svg.selectAll('g.us-grp').data(root.children||[]).enter().append('g').attr('class','us-grp');
+  grps.append('rect')
+    .attr('x',d=>d.x0).attr('y',d=>d.y0)
+    .attr('width',d=>Math.max(0,d.x1-d.x0)).attr('height',d=>Math.max(0,d.y1-d.y0))
+    .attr('fill','rgba(255,255,255,0.015)').attr('stroke','rgba(255,255,255,0.07)')
+    .attr('stroke-width',1).attr('rx',3);
+  grps.filter(d=>(d.x1-d.x0)>50)
+    .append('text')
+    .attr('x',d=>d.x0+6).attr('y',d=>d.y0+12)
+    .attr('fill','rgba(255,255,255,0.3)').attr('font-size',9.5).attr('font-weight',700)
+    .attr('font-family',"'Plus Jakarta Sans',sans-serif").attr('pointer-events','none')
+    .text(d=>d.data.name.toUpperCase());
+
+  // Stock cells
+  const cells = svg.selectAll('g.us-cell').data(root.leaves()).enter()
+    .append('g').attr('class','us-cell')
+    .attr('transform',d=>`translate(${d.x0},${d.y0})`).style('cursor','pointer');
+
+  cells.append('rect')
+    .attr('width',d=>Math.max(0,d.x1-d.x0)).attr('height',d=>Math.max(0,d.y1-d.y0))
+    .attr('fill',d=>d.data.price>0?heatColor(d.data.chgPct):'rgba(255,255,255,0.04)')
+    .attr('rx',2).attr('ry',2);
+
+  cells.each(function(d) {
+    const w=d.x1-d.x0, h=d.y1-d.y0;
+    if (w<20||h<14) return;
+    const g=d3.select(this), s=d.data, pct=s.chgPct;
+    const pctStr=(pct>=0?'+':'')+pct.toFixed(2)+'%';
+    const fs = Math.min(13, w/4.5, h/2.5);
+    g.append('text').attr('x',w/2).attr('y',h>42?h/2-7:h/2+1)
+      .attr('text-anchor','middle').attr('dominant-baseline','middle')
+      .attr('fill','rgba(255,255,255,0.95)').attr('font-size',fs)
+      .attr('font-weight',800).attr('font-family','Kanit,sans-serif').attr('pointer-events','none')
+      .text(s.sym);
+    if (h>36 && s.price>0) {
+      g.append('text').attr('x',w/2).attr('y',h/2+9)
+        .attr('text-anchor','middle').attr('dominant-baseline','middle')
+        .attr('fill','rgba(255,255,255,0.80)').attr('font-size',Math.min(10,w/6))
+        .attr('font-family','Inter,monospace').attr('pointer-events','none').text(pctStr);
+    }
+  });
+
+  // Tooltip
+  const tip = document.getElementById('pulseTip');
+  cells.on('mousemove', function(event,d) {
+    const s=d.data, pct=s.chgPct||0;
+    const fmtPx=p=>p>=1000?'$'+p.toLocaleString(undefined,{maximumFractionDigits:0}):'$'+p.toFixed(2);
+    tip.style.display='block';
+    tip.innerHTML=`<div class="tt-header">
+      <div><div class="tt-name">${s.sym}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${s.name}</div>
+      <div class="tt-cat" style="background:rgba(96,165,250,0.12);color:#60a5fa;margin-top:4px">${s.sector}</div></div>
+      <div class="tt-px-block">
+        <div class="tt-price">${s.price>0?fmtPx(s.price):'—'}</div>
+        ${s.price>0?`<div class="tt-chg-badge" style="background:${pct>=0?'rgba(16,185,129,0.15)':'rgba(239,68,68,0.15)'};color:${pct>=0?'#10b981':'#ef4444'}">${pct>=0?'+':''}${pct.toFixed(2)}%</div>`:''}
+      </div></div>
+      <div class="tt-body">
+        <div class="tt-row"><span class="tt-lbl">Market Cap</span><span class="tt-val">${money(s.marketCap)}</span></div>
+        <div class="tt-row"><span class="tt-lbl">S&P 500 Weight</span><span class="tt-val">~${s.mktW.toFixed(1)}%</span></div>
+        <div class="tt-row"><span class="tt-lbl">Sector</span><span class="tt-val">${s.sector}</span></div>
+      </div>`;
+    const tw=240,th=160;
+    tip.style.left=(event.clientX+16+tw>window.innerWidth?event.clientX-tw-8:event.clientX+16)+'px';
+    tip.style.top=(event.clientY+16+th>window.innerHeight?event.clientY-th-8:event.clientY+16)+'px';
+  }).on('mouseleave',()=>{tip.style.display='none';});
+}
+
+// ── Industry (GICS Sector) Treemap ────────────────────────────
+function renderIndustryHeatmap() {
+  if (!d3Loaded || typeof d3 === 'undefined') return;
+  const wrap = document.querySelector('.pulse-map-wrap');
+  const W = wrap.clientWidth || 1200, H = wrap.clientHeight || 640;
+
+  const data = sectorEtfCache.length ? sectorEtfCache : SECTOR_ETFS.map(e=>({...e,price:0,chgPct:0}));
+  const root = d3.hierarchy({name:'root',children:data})
+    .sum(d=>d.weight||0).sort((a,b)=>(b.value||0)-(a.value||0));
+
+  d3.treemap().size([W,H]).paddingOuter(4).paddingInner(3).round(true)(root);
+
+  const svg = d3.select('#pulseSvg').attr('viewBox',`0 0 ${W} ${H}`).attr('preserveAspectRatio','xMidYMid meet');
+  svg.selectAll('*').remove();
+
+  const cells = svg.selectAll('g.ind-cell').data(root.leaves()).enter()
+    .append('g').attr('class','ind-cell')
+    .attr('transform',d=>`translate(${d.x0},${d.y0})`).style('cursor','pointer');
+
+  cells.append('rect')
+    .attr('width',d=>Math.max(0,d.x1-d.x0)).attr('height',d=>Math.max(0,d.y1-d.y0))
+    .attr('fill',d=>d.data.price>0?heatColor(d.data.chgPct):'rgba(255,255,255,0.04)')
+    .attr('rx',4).attr('ry',4);
+
+  // Colored left accent bar
+  cells.append('rect')
+    .attr('x',0).attr('y',0).attr('width',3)
+    .attr('height',d=>Math.max(0,d.y1-d.y0))
+    .attr('fill',d=>d.data.color||'#6b7280').attr('rx',2);
+
+  cells.each(function(d) {
+    const w=d.x1-d.x0, h=d.y1-d.y0;
+    if (w<32||h<22) return;
+    const g=d3.select(this), s=d.data, pct=s.chgPct||0;
+    const pctStr=(pct>=0?'+':'')+pct.toFixed(2)+'%';
+    const fmtPx=p=>p>=100?'$'+p.toFixed(2):'$'+p.toFixed(3);
+
+    // ETF ticker
+    const fs=Math.min(18,w/5,h/3.5);
+    g.append('text').attr('x',w/2).attr('y',h>80?h/2-20:h/2-10)
+      .attr('text-anchor','middle').attr('dominant-baseline','middle')
+      .attr('fill','rgba(255,255,255,0.95)').attr('font-size',fs)
+      .attr('font-weight',800).attr('font-family','Kanit,sans-serif').attr('pointer-events','none')
+      .text(s.sym);
+
+    // Sector full name
+    if (h>55 && w>80) {
+      const nameFs=Math.min(11,w/11);
+      g.append('text').attr('x',w/2).attr('y',h>80?h/2+3:h/2+2)
+        .attr('text-anchor','middle').attr('dominant-baseline','middle')
+        .attr('fill','rgba(255,255,255,0.5)').attr('font-size',nameFs)
+        .attr('font-family',"'Plus Jakarta Sans',sans-serif").attr('pointer-events','none')
+        .text(s.name.length>Math.floor(w/nameFs*1.6)?s.name.slice(0,Math.floor(w/nameFs*1.6))+'…':s.name);
+    }
+
+    // % change
+    if (h>70) {
+      g.append('text').attr('x',w/2).attr('y',h>80?h/2+24:h/2+18)
+        .attr('text-anchor','middle').attr('dominant-baseline','middle')
+        .attr('fill',pct>=0?'rgba(52,211,153,0.95)':'rgba(248,113,113,0.95)')
+        .attr('font-size',Math.min(13,w/7)).attr('font-weight',700)
+        .attr('font-family','Inter,monospace').attr('pointer-events','none')
+        .text(s.price>0?pctStr:'—');
+    }
+
+    // Price (if large enough cell)
+    if (h>110 && s.price>0) {
+      g.append('text').attr('x',w/2).attr('y',h/2+42)
+        .attr('text-anchor','middle').attr('fill','rgba(255,255,255,0.35)')
+        .attr('font-size',Math.min(10,w/11)).attr('font-family','Inter,monospace').attr('pointer-events','none')
+        .text(fmtPx(s.price));
+    }
+
+    // S&P weight label
+    if (w>70 && h>44) {
+      g.append('text').attr('x',w-6).attr('y',h-5)
+        .attr('text-anchor','end').attr('fill','rgba(255,255,255,0.2)')
+        .attr('font-size',9).attr('font-family','Inter,sans-serif').attr('pointer-events','none')
+        .text(s.weight+'%');
+    }
+  });
+
+  // Tooltip
+  const tip = document.getElementById('pulseTip');
+  cells.on('mousemove',function(event,d) {
+    const s=d.data, pct=s.chgPct||0;
+    const fmtPx=p=>p>=100?'$'+p.toFixed(2):'$'+p.toFixed(3);
+    tip.style.display='block';
+    tip.innerHTML=`<div class="tt-header">
+      <div><div class="tt-name">${s.sym}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${s.name}</div>
+      <div class="tt-cat" style="background:rgba(255,255,255,0.05);color:var(--muted-hi);margin-top:4px">GICS SECTOR ETF</div></div>
+      <div class="tt-px-block">
+        <div class="tt-price">${s.price>0?fmtPx(s.price):'—'}</div>
+        ${s.price>0?`<div class="tt-chg-badge" style="background:${pct>=0?'rgba(16,185,129,0.15)':'rgba(239,68,68,0.15)'};color:${pct>=0?'#10b981':'#ef4444'}">${pct>=0?'+':''}${pct.toFixed(2)}%</div>`:''}
+      </div></div>
+      <div class="tt-body">
+        <div class="tt-row"><span class="tt-lbl">S&P 500 Weight</span><span class="tt-val">${s.weight}%</span></div>
+        <div class="tt-row"><span class="tt-lbl">ETF Provider</span><span class="tt-val">State Street SPDR</span></div>
+        ${s.price>0?`<div class="tt-row"><span class="tt-lbl">% Change Today</span><span class="tt-val" style="color:${pct>=0?'#10b981':'#ef4444'}">${pct>=0?'+':''}${pct.toFixed(2)}%</span></div>`:''}
+      </div>`;
+    const tw=240,th=180;
+    tip.style.left=(event.clientX+16+tw>window.innerWidth?event.clientX-tw-8:event.clientX+16)+'px';
+    tip.style.top=(event.clientY+16+th>window.innerHeight?event.clientY-th-8:event.clientY+16)+'px';
+  }).on('mouseleave',()=>{tip.style.display='none';});
+}
+
 function pulseCat(name) {
   if (RWA_SET.has(name)) return 'rwa';
   return 'crypto';
@@ -4892,28 +5376,56 @@ document.getElementById('pulseChips').addEventListener('click', e => {
   document.querySelectorAll('#pulseChips .chip').forEach(x => x.classList.remove('active'));
   c.classList.add('active');
   pulseFilter = c.dataset.pf;
-  updatePulseStats();
-  renderPulse();
-  // Show/hide RWA stocks panel
-  const rwaPanel = document.getElementById('rwaStocksPanel');
-  if (rwaPanel) {
-    if (pulseFilter === 'rwa') {
-      rwaPanel.style.display = 'block';
-      if (!fhStocksLoaded) {
-        rwaPanel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px"><span class="spin"></span> Loading US market data from Finnhub…</div>';
-        loadFinnhubStocks();
-      } else {
-        renderRwaStocksPanel();
-      }
+
+  // Restore stats bar labels (might have been renamed by US Stocks/Industry)
+  document.querySelector('#pulseStats .psc:nth-child(2) .psc-label').textContent = 'Total OI';
+
+  if (pulseFilter === 'usstocks') {
+    document.getElementById('rwaStocksPanel').style.display = 'none';
+    updateUSStocksStats();
+    if (!usStocksLoaded) {
+      d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14"><tspan>Loading S&P 500 data via Yahoo Finance…</tspan></text>');
+      loadYahooStocks();
     } else {
-      rwaPanel.style.display = 'none';
+      renderUSStocksHeatmap();
+    }
+  } else if (pulseFilter === 'industry') {
+    document.getElementById('rwaStocksPanel').style.display = 'none';
+    updateIndustryStats();
+    if (!sectorEtfLoaded) {
+      d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14">Loading sector ETFs via Finnhub…</text>');
+      loadSectorETFs();
+    } else {
+      renderIndustryHeatmap();
+    }
+  } else {
+    // Crypto / RWA / All — restore normal pulse
+    updatePulseStats();
+    renderPulse();
+    // Show/hide RWA stocks panel
+    const rwaPanel = document.getElementById('rwaStocksPanel');
+    if (rwaPanel) {
+      if (pulseFilter === 'rwa') {
+        rwaPanel.style.display = 'block';
+        if (!fhStocksLoaded) {
+          rwaPanel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px"><span class="spin"></span> Loading US market data from Finnhub…</div>';
+          loadFinnhubStocks();
+        } else {
+          renderRwaStocksPanel();
+        }
+      } else {
+        rwaPanel.style.display = 'none';
+      }
     }
   }
 });
 
 // ── Resize handler ────────────────────────────────────────
 window.addEventListener('resize', () => {
-  if (pulseActive && d3Loaded) renderPulse();
+  if (!pulseActive || !d3Loaded) return;
+  if (pulseFilter === 'usstocks') renderUSStocksHeatmap();
+  else if (pulseFilter === 'industry') renderIndustryHeatmap();
+  else renderPulse();
 });
 
 // ── Lazy load on first tab visit ─────────────────────────
@@ -4924,6 +5436,20 @@ async function initPulse() {
   await loadD3();
   await fetchPulse();   // initial REST load: OI, funding, prevDayPx
   startPulseWS();       // then switch to WS for live price stream
+  // Prefetch US stocks + sector ETFs in background after crypto loads
+  setTimeout(() => {
+    loadYahooStocks();   // ~100 S&P 500 stocks via Yahoo Finance proxy
+    loadSectorETFs();    // 11 SPDR sector ETFs via Finnhub
+  }, 4000);
+  // Refresh every 60s
+  setInterval(() => {
+    loadYahooStocks();
+    if (pulseFilter === 'usstocks') { updateUSStocksStats(); renderUSStocksHeatmap(); }
+  }, 60000);
+  setInterval(() => {
+    loadSectorETFs();
+    if (pulseFilter === 'industry') { updateIndustryStats(); renderIndustryHeatmap(); }
+  }, 30000);
 }
 
 // ══════════════════════════════════════════════════════════

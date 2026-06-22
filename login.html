@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARX — Access Control</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --gold:#c9a84c;
+    --gold2:#f0c96e;
+    --blue:#1a3a5c;
+    --cyan:#00d4ff;
+    --red:#ff2244;
+    --bg:#050510;
+    --card-bg:rgba(8,12,32,0.88);
+    --border:rgba(201,168,76,0.35);
+    --text:#e8e0cc;
+  }
+  html,body{
+    width:100%;height:100%;overflow:hidden;
+    background:var(--bg);
+    font-family:'Courier New',Courier,monospace;
+    color:var(--text);
+    user-select:none;
+  }
+  /* ── Canvas layer ── */
+  #bgCanvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
+
+  /* ── Citadel SVG ── */
+  #citadelWrap{
+    position:fixed;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    z-index:1;
+    pointer-events:none;
+  }
+  #citadelSvg{opacity:.55;filter:drop-shadow(0 0 18px rgba(0,212,255,.45))}
+  .ring{transform-origin:200px 200px;animation:spinRing 24s linear infinite}
+  .ring2{animation-duration:38s;animation-direction:reverse}
+  .ring3{animation-duration:16s}
+  @keyframes spinRing{to{transform:rotate(360deg)}}
+
+  /* ── Scan line ── */
+  #scanLine{
+    position:fixed;top:-4px;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+    z-index:2;
+    animation:scan 6s linear infinite;
+    opacity:.6;
+  }
+  @keyframes scan{0%{top:-4px;opacity:0}10%{opacity:.6}90%{opacity:.35}100%{top:100%;opacity:0}}
+
+  /* ── Hex grid overlay ── */
+  #hexGrid{
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    z-index:1;pointer-events:none;opacity:.07;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 0L56 14v28L28 56 0 42V14z' fill='none' stroke='%2300d4ff' stroke-width='1'/%3E%3Cpath d='M28 56L56 70v28L28 112 0 98V70z' fill='none' stroke='%2300d4ff' stroke-width='1'/%3E%3Cpath d='M-28 28L0 14v28L-28 56-56 42V14z' fill='none' stroke='%2300d4ff' stroke-width='1'/%3E%3Cpath d='M84 28L112 14v28L84 56 56 42V14z' fill='none' stroke='%2300d4ff' stroke-width='1'/%3E%3C/svg%3E");
+  }
+
+  /* ── Login card ── */
+  #loginCard{
+    position:fixed;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    z-index:10;
+    width:380px;
+    padding:40px 36px 36px;
+    background:var(--card-bg);
+    border:1px solid var(--border);
+    box-shadow:0 0 60px rgba(0,212,255,.12),0 0 120px rgba(201,168,76,.08),inset 0 1px 0 rgba(201,168,76,.2);
+    backdrop-filter:blur(18px);
+    animation:cardIn 1.4s cubic-bezier(.16,1,.3,1) forwards;
+    opacity:0;
+  }
+  @keyframes cardIn{
+    0%{opacity:0;transform:translate(-50%,-46%) scale(.94)}
+    100%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  }
+
+  /* ── Corner braces ── */
+  #loginCard::before,#loginCard::after{
+    content:'';position:absolute;width:18px;height:18px;
+    border-color:var(--gold);border-style:solid;
+  }
+  #loginCard::before{top:-1px;left:-1px;border-width:2px 0 0 2px}
+  #loginCard::after{bottom:-1px;right:-1px;border-width:0 2px 2px 0}
+
+  .corner-tr{position:absolute;top:-1px;right:-1px;width:18px;height:18px;border-top:2px solid var(--gold);border-right:2px solid var(--gold)}
+  .corner-bl{position:absolute;bottom:-1px;left:-1px;width:18px;height:18px;border-bottom:2px solid var(--gold);border-left:2px solid var(--gold)}
+
+  /* ── Logo / Branding ── */
+  .arx-logo{
+    text-align:center;margin-bottom:28px;
+  }
+  .arx-logotype{
+    font-size:32px;letter-spacing:.35em;font-weight:700;
+    background:linear-gradient(135deg,var(--gold) 0%,var(--gold2) 50%,var(--gold) 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    text-shadow:none;
+    filter:drop-shadow(0 0 8px rgba(201,168,76,.7));
+  }
+  .arx-sub{
+    font-size:9px;letter-spacing:.28em;color:rgba(201,168,76,.55);
+    margin-top:4px;text-transform:uppercase;
+  }
+  .arx-divider{
+    width:100%;height:1px;margin:0 0 26px;
+    background:linear-gradient(90deg,transparent,var(--gold),transparent);
+    opacity:.4;
+  }
+
+  /* ── Form ── */
+  .field-wrap{position:relative;margin-bottom:16px}
+  .field-label{
+    font-size:9px;letter-spacing:.2em;color:rgba(201,168,76,.65);
+    text-transform:uppercase;margin-bottom:6px;display:block;
+  }
+  .field-input{
+    width:100%;padding:11px 14px 11px 40px;
+    background:rgba(0,10,30,.7);
+    border:1px solid rgba(201,168,76,.25);
+    color:#e8e0cc;
+    font-family:'Courier New',monospace;
+    font-size:13px;
+    letter-spacing:.08em;
+    outline:none;
+    transition:border-color .2s,box-shadow .2s;
+  }
+  .field-input:focus{
+    border-color:rgba(0,212,255,.6);
+    box-shadow:0 0 0 3px rgba(0,212,255,.08),0 0 12px rgba(0,212,255,.15);
+  }
+  .field-icon{
+    position:absolute;left:12px;top:50%;transform:translateY(-50%);
+    margin-top:10px;
+    color:rgba(201,168,76,.5);font-size:14px;pointer-events:none;
+  }
+
+  /* ── Submit btn ── */
+  #loginBtn{
+    width:100%;padding:13px;margin-top:8px;
+    background:transparent;
+    border:1px solid rgba(201,168,76,.5);
+    color:var(--gold);
+    font-family:'Courier New',monospace;
+    font-size:12px;letter-spacing:.3em;
+    text-transform:uppercase;
+    cursor:pointer;
+    position:relative;overflow:hidden;
+    transition:all .2s;
+  }
+  #loginBtn::before{
+    content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(201,168,76,.12),transparent);
+    transition:left .4s;
+  }
+  #loginBtn:hover{
+    border-color:var(--gold2);
+    box-shadow:0 0 20px rgba(201,168,76,.25);
+    background:rgba(201,168,76,.06);
+  }
+  #loginBtn:hover::before{left:100%}
+  #loginBtn:active{transform:scale(.98)}
+  #loginBtn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* ── Status / Error ── */
+  #statusLine{
+    height:22px;margin-top:14px;
+    font-size:10px;letter-spacing:.15em;
+    text-align:center;text-transform:uppercase;
+    transition:opacity .3s;
+  }
+  .status-err{color:var(--red);animation:shake .35s ease}
+  .status-ok{color:#34d399}
+  .status-info{color:var(--cyan)}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
+
+  /* ── Access level badge ── */
+  .access-row{
+    display:flex;align-items:center;justify-content:center;
+    gap:6px;margin-top:22px;
+    font-size:8px;letter-spacing:.22em;color:rgba(201,168,76,.35);
+    text-transform:uppercase;
+  }
+  .access-dot{width:5px;height:5px;border-radius:50%;background:rgba(201,168,76,.25);animation:dotPulse 2s ease-in-out infinite}
+  @keyframes dotPulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+  /* ── Success overlay ── */
+  #successOverlay{
+    position:fixed;inset:0;z-index:100;
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:16px;
+    background:var(--bg);
+    opacity:0;pointer-events:none;
+    transition:opacity .6s;
+  }
+  #successOverlay.show{opacity:1;pointer-events:all}
+  .access-granted-text{
+    font-size:22px;letter-spacing:.4em;
+    background:linear-gradient(135deg,var(--gold),var(--gold2),var(--gold));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+    filter:drop-shadow(0 0 12px rgba(201,168,76,.9));
+    animation:textGlow 1s ease-in-out infinite alternate;
+  }
+  @keyframes textGlow{from{filter:drop-shadow(0 0 8px rgba(201,168,76,.6))}to{filter:drop-shadow(0 0 20px rgba(201,168,76,1))}}
+  .access-sub{font-size:9px;letter-spacing:.3em;color:rgba(201,168,76,.55)}
+
+  /* ── Progress bar ── */
+  #loadBar{
+    width:260px;height:2px;background:rgba(201,168,76,.1);overflow:hidden;
+    margin-top:8px;
+  }
+  #loadBarFill{
+    height:100%;width:0;
+    background:linear-gradient(90deg,var(--gold),var(--gold2));
+    box-shadow:0 0 8px var(--gold);
+    transition:width 1.8s ease;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<div id="hexGrid"></div>
+<div id="scanLine"></div>
+
+<!-- Citadel SVG (behind card) -->
+<div id="citadelWrap">
+<svg id="citadelSvg" viewBox="0 0 400 400" width="680" height="680" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outermost slow ring — hexagonal dashes -->
+  <g class="ring ring2" opacity=".5">
+    <circle cx="200" cy="200" r="185" fill="none" stroke="#1a3a5c" stroke-width="1" stroke-dasharray="12 8"/>
+    <polygon points="200,15 369,107 369,293 200,385 31,293 31,107" fill="none" stroke="#c9a84c" stroke-width=".6" opacity=".6"/>
+  </g>
+  <!-- Middle ring — rotating markers -->
+  <g class="ring" opacity=".7">
+    <circle cx="200" cy="200" r="155" fill="none" stroke="#00d4ff" stroke-width=".8" stroke-dasharray="6 10"/>
+    <!-- Tick marks -->
+    <line x1="200" y1="45" x2="200" y2="60" stroke="#00d4ff" stroke-width="2"/>
+    <line x1="200" y1="340" x2="200" y2="355" stroke="#00d4ff" stroke-width="2"/>
+    <line x1="45" y1="200" x2="60" y2="200" stroke="#00d4ff" stroke-width="2"/>
+    <line x1="340" y1="200" x2="355" y2="200" stroke="#00d4ff" stroke-width="2"/>
+    <!-- Diagonal ticks -->
+    <line x1="310" y1="90" x2="300" y2="100" stroke="#c9a84c" stroke-width="1.5"/>
+    <line x1="90" y1="310" x2="100" y2="300" stroke="#c9a84c" stroke-width="1.5"/>
+    <line x1="90" y1="90" x2="100" y2="100" stroke="#c9a84c" stroke-width="1.5"/>
+    <line x1="310" y1="310" x2="300" y2="300" stroke="#c9a84c" stroke-width="1.5"/>
+  </g>
+  <!-- Inner ring — fast -->
+  <g class="ring ring3" opacity=".8">
+    <circle cx="200" cy="200" r="118" fill="none" stroke="#c9a84c" stroke-width=".6" stroke-dasharray="3 7"/>
+    <!-- Node diamonds -->
+    <rect x="196" y="79" width="8" height="8" fill="#c9a84c" transform="rotate(45 200 83)" opacity=".8"/>
+    <rect x="196" y="309" width="8" height="8" fill="#c9a84c" transform="rotate(45 200 313)" opacity=".8"/>
+    <rect x="79" y="196" width="8" height="8" fill="#c9a84c" transform="rotate(45 83 200)" opacity=".8"/>
+    <rect x="309" y="196" width="8" height="8" fill="#c9a84c" transform="rotate(45 313 200)" opacity=".8"/>
+  </g>
+  <!-- Static fortress silhouette -->
+  <!-- Base platform -->
+  <rect x="130" y="270" width="140" height="40" fill="none" stroke="#c9a84c" stroke-width="1.2" opacity=".9"/>
+  <rect x="155" y="245" width="90" height="30" fill="none" stroke="#c9a84c" stroke-width="1.2" opacity=".9"/>
+  <!-- Main keep -->
+  <rect x="175" y="195" width="50" height="55" fill="rgba(8,12,32,.8)" stroke="#c9a84c" stroke-width="1.4"/>
+  <!-- Battlements on keep -->
+  <rect x="175" y="185" width="8" height="12" fill="none" stroke="#c9a84c" stroke-width="1.2"/>
+  <rect x="186" y="185" width="8" height="12" fill="none" stroke="#c9a84c" stroke-width="1.2"/>
+  <rect x="197" y="185" width="8" height="12" fill="none" stroke="#c9a84c" stroke-width="1.2"/>
+  <rect x="208" y="185" width="8" height="12" fill="none" stroke="#c9a84c" stroke-width="1.2"/>
+  <rect x="219" y="185" width="8" height="12" fill="none" stroke="#c9a84c" stroke-width="1.2"/>
+  <!-- Gate arch -->
+  <path d="M193 250 Q200 235 207 250" fill="none" stroke="#00d4ff" stroke-width="1.5"/>
+  <rect x="194" y="240" width="12" height="10" fill="none" stroke="#00d4ff" stroke-width="1"/>
+  <!-- Left tower -->
+  <rect x="145" y="215" width="28" height="55" fill="rgba(8,12,32,.7)" stroke="#c9a84c" stroke-width="1.2"/>
+  <rect x="143" y="208" width="7" height="9" fill="none" stroke="#c9a84c" stroke-width="1"/>
+  <rect x="152" y="208" width="7" height="9" fill="none" stroke="#c9a84c" stroke-width="1"/>
+  <rect x="161" y="208" width="7" height="9" fill="none" stroke="#c9a84c" stroke-width="1"/>
+  <!-- Right tower -->
+  <rect x="227" y="215" width="28" height="55" fill="rgba(8,12,32,.7)" stroke="#c9a84c" stroke-width="1.2"/>
+  <rect x="225" y="208" width="7" height="9" fill="none" stroke="#c9a84c" stroke-width="1"/>
+  <rect x="234" y="208" width="7" height="9" fill="none" stroke="#c9a84c" stroke-width="1"/>
+  <rect x="243" y="208" width="7" height="9" fill="none" stroke="#c9a84c" stroke-width="1"/>
+  <!-- Spires -->
+  <line x1="159" y1="215" x2="159" y2="195" stroke="#c9a84c" stroke-width="1.5"/>
+  <polygon points="159,185 155,198 163,198" fill="#c9a84c" opacity=".9"/>
+  <line x1="241" y1="215" x2="241" y2="195" stroke="#c9a84c" stroke-width="1.5"/>
+  <polygon points="241,185 237,198 245,198" fill="#c9a84c" opacity=".9"/>
+  <line x1="200" y1="195" x2="200" y2="168" stroke="#c9a84c" stroke-width="1.5"/>
+  <polygon points="200,158 195,172 205,172" fill="#c9a84c"/>
+  <!-- Center glow -->
+  <circle cx="200" cy="200" r="20" fill="rgba(0,212,255,.06)"/>
+  <circle cx="200" cy="200" r="8" fill="rgba(201,168,76,.15)" stroke="#c9a84c" stroke-width=".8">
+    <animate attributeName="r" values="6;10;6" dur="2.5s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values=".5;1;.5" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
+  <!-- Outer glow ring static -->
+  <circle cx="200" cy="200" r="195" fill="none" stroke="rgba(0,212,255,.08)" stroke-width="6"/>
+</svg>
+</div>
+
+<!-- Login card -->
+<div id="loginCard">
+  <div class="corner-tr"></div>
+  <div class="corner-bl"></div>
+
+  <div class="arx-logo">
+    <div class="arx-logotype">ARX</div>
+    <div class="arx-sub">Advance Research Exchange — Citadel</div>
+  </div>
+  <div class="arx-divider"></div>
+
+  <form id="loginForm" autocomplete="off">
+    <div class="field-wrap">
+      <label class="field-label" for="uid">Operator ID</label>
+      <span class="field-icon">▸</span>
+      <input id="uid" class="field-input" type="text" autocomplete="off"
+             placeholder="enter designation" maxlength="40" spellcheck="false"/>
+    </div>
+    <div class="field-wrap">
+      <label class="field-label" for="pw">Access Key</label>
+      <span class="field-icon">◆</span>
+      <input id="pw" class="field-input" type="password" autocomplete="off"
+             placeholder="enter access key" maxlength="80"/>
+    </div>
+    <button id="loginBtn" type="submit">AUTHENTICATE</button>
+  </form>
+
+  <div id="statusLine"></div>
+
+  <div class="access-row">
+    <span class="access-dot"></span>
+    <span>CLEARANCE REQUIRED — CITADEL SYSTEM</span>
+    <span class="access-dot" style="animation-delay:.6s"></span>
+  </div>
+</div>
+
+<!-- Success overlay -->
+<div id="successOverlay">
+  <div class="access-granted-text">ACCESS GRANTED</div>
+  <div class="access-sub" id="accessSubText">INITIALISING ARX COMMAND BRIDGE</div>
+  <div id="loadBar"><div id="loadBarFill"></div></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// Particle / star canvas
+// ─────────────────────────────────────────────
+(function(){
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, stars=[], nodes=[], frame=0;
+
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Stars
+  for(let i=0;i<260;i++){
+    stars.push({
+      x:Math.random(),y:Math.random(),
+      r:Math.random()*1.2+.2,
+      a:Math.random()*.8+.1,
+      twinkle:Math.random()*Math.PI*2,
+      speed:Math.random()*0.002+0.001
+    });
+  }
+  // Floating data nodes (small squares, slowly drifting)
+  for(let i=0;i<22;i++){
+    nodes.push({
+      x:Math.random()*2-1, y:Math.random()*2-1,
+      vx:(Math.random()-.5)*0.0002,
+      vy:(Math.random()-.5)*0.0002,
+      size:Math.random()*3+1,
+      a:Math.random()*.4+.1,
+      col:Math.random()>.5?'201,168,76':'0,212,255'
+    });
+  }
+
+  function drawConnections(){
+    const items=[...nodes.map(n=>({x:(n.x+1)/2*W,y:(n.y+1)/2*H,col:n.col,a:n.a}))];
+    for(let i=0;i<items.length;i++){
+      for(let j=i+1;j<items.length;j++){
+        const dx=items[i].x-items[j].x, dy=items[i].y-items[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<160){
+          ctx.beginPath();
+          ctx.moveTo(items[i].x,items[i].y);
+          ctx.lineTo(items[j].x,items[j].y);
+          ctx.strokeStyle=`rgba(0,212,255,${.06*(1-d/160)})`;
+          ctx.lineWidth=.5;
+          ctx.stroke();
+        }
+      }
+    }
+  }
+
+  function tick(){
+    ctx.clearRect(0,0,W,H);
+
+    // Deep space gradient
+    const bg=ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*.7);
+    bg.addColorStop(0,'rgba(8,10,28,1)');
+    bg.addColorStop(.5,'rgba(4,6,18,1)');
+    bg.addColorStop(1,'rgba(2,3,10,1)');
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,W,H);
+
+    // Stars
+    frame++;
+    stars.forEach(s=>{
+      s.twinkle+=s.speed*2;
+      const a=s.a*(0.6+0.4*Math.sin(s.twinkle));
+      ctx.beginPath();
+      ctx.arc(s.x*W,s.y*H,s.r,0,Math.PI*2);
+      ctx.fillStyle=`rgba(200,210,240,${a})`;
+      ctx.fill();
+    });
+
+    // Connections between nodes
+    drawConnections();
+
+    // Nodes
+    nodes.forEach(n=>{
+      n.x+=n.vx; n.y+=n.vy;
+      if(n.x<-1||n.x>1)n.vx*=-1;
+      if(n.y<-1||n.y>1)n.vy*=-1;
+      const px=(n.x+1)/2*W, py=(n.y+1)/2*H;
+      ctx.fillStyle=`rgba(${n.col},${n.a})`;
+      ctx.fillRect(px-n.size/2,py-n.size/2,n.size,n.size);
+    });
+
+    // Nebula vignette glow
+    const vg=ctx.createRadialGradient(W/2,H/2,H*.12,W/2,H/2,H*.75);
+    vg.addColorStop(0,'rgba(0,20,60,.0)');
+    vg.addColorStop(.6,'rgba(0,10,30,.1)');
+    vg.addColorStop(1,'rgba(0,0,10,.55)');
+    ctx.fillStyle=vg;
+    ctx.fillRect(0,0,W,H);
+
+    requestAnimationFrame(tick);
+  }
+  tick();
+})();
+
+// ─────────────────────────────────────────────
+// Auth — SHA-256 via Web Crypto
+// ─────────────────────────────────────────────
+const USERS = {
+  'dailo': {
+    hash: '7d6b8e91eb9128d748050682f53be723f0dcebe3933d0d312cbe47ec66c3b520',
+    level: 'SUPERHUMAN GOD ACCESS',
+    greeting: 'Welcome, Operator DAILO. Full citadel access unlocked.'
+  },
+  'dailozhang': {
+    hash: '403774aa7e1635aaf218dc899900238e691ffb21ec1701255840aa614a28fc39',
+    level: 'SUPERHUMAN GOD ACCESS',
+    greeting: 'Welcome, Operator DAILOZHANG. Full citadel access unlocked.'
+  },
+  'kelly': {
+    hash: '7e3a76a029868a7889d40ada5581c3ff71f942a277f01519286489661242cd1a',
+    level: 'CITADEL OPERATOR ACCESS',
+    greeting: 'Welcome, Operator KELLY. Access granted.'
+  },
+  'zephan': {
+    hash: 'e0cf7e57927dba9ddc67e2d165ed3322591de04c9a14fbdc2a574c18f8f12114',
+    level: 'CITADEL OPERATOR ACCESS',
+    greeting: 'Welcome, Operator ZEPHAN. Access granted.'
+  }
+};
+
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function setStatus(msg, type='info'){
+  const el = document.getElementById('statusLine');
+  el.textContent = msg;
+  el.className = 'status-' + type;
+  // Re-trigger animation
+  el.style.animation='none';
+  void el.offsetWidth;
+  el.style.animation='';
+}
+
+async function doLogin(e){
+  e.preventDefault();
+  const uid  = document.getElementById('uid').value.trim().toLowerCase();
+  const pw   = document.getElementById('pw').value;
+  const btn  = document.getElementById('loginBtn');
+
+  if(!uid||!pw){ setStatus('ENTER CREDENTIALS','err'); return; }
+
+  btn.disabled=true;
+  setStatus('VERIFYING IDENTITY…','info');
+
+  // Brief fake scan delay for atmosphere
+  await new Promise(r=>setTimeout(r,900));
+
+  const user = USERS[uid];
+  if(!user){
+    btn.disabled=false;
+    setStatus('ACCESS DENIED — UNKNOWN OPERATOR','err');
+    shake();
+    return;
+  }
+
+  const h = await sha256(pw);
+  if(h !== user.hash){
+    btn.disabled=false;
+    setStatus('ACCESS DENIED — INVALID KEY','err');
+    shake();
+    return;
+  }
+
+  // ✓ Authenticated
+  setStatus('IDENTITY CONFIRMED','ok');
+  sessionStorage.setItem('arx_auth', JSON.stringify({
+    uid,
+    level: user.level,
+    ts: Date.now()
+  }));
+
+  await new Promise(r=>setTimeout(r,500));
+  showAccessGranted(user);
+}
+
+function shake(){
+  const card = document.getElementById('loginCard');
+  card.style.animation='shake .35s ease, cardIn 0s';
+  card.animate([
+    {transform:'translate(-50%,-50%) translateX(0)'},
+    {transform:'translate(-50%,-50%) translateX(-6px)'},
+    {transform:'translate(-50%,-50%) translateX(6px)'},
+    {transform:'translate(-50%,-50%) translateX(-4px)'},
+    {transform:'translate(-50%,-50%) translateX(0)'}
+  ],{duration:350,easing:'ease'});
+}
+
+function showAccessGranted(user){
+  const overlay = document.getElementById('successOverlay');
+  const sub     = document.getElementById('accessSubText');
+  const fill    = document.getElementById('loadBarFill');
+
+  sub.textContent = user.level + ' — LOADING ARX COMMAND BRIDGE';
+  overlay.classList.add('show');
+
+  setTimeout(()=>{ fill.style.width='100%'; }, 100);
+
+  setTimeout(()=>{
+    window.location.href = 'index.html';
+  }, 2200);
+}
+
+document.getElementById('loginForm').addEventListener('submit', doLogin);
+
+// Auto-focus
+window.addEventListener('load',()=>{
+  setTimeout(()=>document.getElementById('uid').focus(), 1400);
+});
+</script>
+</body>
+</html>
