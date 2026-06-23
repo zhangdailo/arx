@@ -8824,13 +8824,13 @@ async function generateNewsWatch() {
   fhNewsCache.slice(0, 30).forEach(n => {
     const headline = (n.headline || '').trim();
     if (!headline) return;
-    items.push({ text: headline, source: n.source || 'Finnhub', ts: n.datetime ? n.datetime * 1000 : 0, cat: _nwCat(headline) });
+    items.push({ text: headline, source: n.source || 'Finnhub', ts: n.datetime ? n.datetime * 1000 : 0, cat: _nwCat(headline), link: n.url || '' });
   });
 
   rssNewsCache.slice(0, 40).forEach(n => {
     const headline = (n.title || '').trim();
     if (!headline) return;
-    items.push({ text: headline, source: n.source || 'RSS', ts: n.pubDate || 0, cat: _nwCat(headline) });
+    items.push({ text: headline, source: n.source || 'RSS', ts: n.pubDate || 0, cat: _nwCat(headline), link: n.link || '' });
   });
 
   if (zeitgeist?.news) {
@@ -8859,7 +8859,13 @@ async function generateNewsWatch() {
   // ── 6. Trending (CoinGecko via zeitgeist) ────────────
   const trending = (zeitgeist?.trending || []).slice(0, 6);
 
-  // ── 7. Render ─────────────────────────────────────────
+  // ── 7. Pre-shorten URLs for copy text ────────────────
+  const allGroupItems = [...groups.CRYPTO, ...groups.MACRO, ...groups.REG];
+  await Promise.all(allGroupItems.map(async n => {
+    if (n.link) n.shortUrl = await _shortenUrl(n.link);
+  }));
+
+  // ── 8. Render ─────────────────────────────────────────
   const now  = new Date();
   const sgt  = new Date(now.getTime() + 8 * 3600000);
   const tstr = sgt.toLocaleTimeString('en-SG', { hour:'2-digit', minute:'2-digit', timeZone:'UTC' }) + ' SGT';
@@ -8941,6 +8947,25 @@ function _renderNewsWatchCard(groups, trending, tstr, dstr) {
   return html;
 }
 
+// TinyURL shortener — free, no API key needed
+// Cache so repeated generateNewsWatch() calls don't re-shorten the same URL
+const _shortUrlCache = new Map();
+async function _shortenUrl(url) {
+  if (!url) return '';
+  if (_shortUrlCache.has(url)) return _shortUrlCache.get(url);
+  try {
+    const r = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) });
+    const short = r.ok ? (await r.text()).trim() : url;
+    // Strip https:// prefix to save characters in Telegram
+    const compact = short.replace(/^https?:\/\//i, '');
+    _shortUrlCache.set(url, compact);
+    return compact;
+  } catch(e) {
+    _shortUrlCache.set(url, url);
+    return url;
+  }
+}
+
 function _formatNewsWatchText(groups, trending, tstr, dstr) {
   const lines = [];
   lines.push(`📰 ARX NEWS WATCH — ${tstr} · ${dstr}`);
@@ -8959,6 +8984,7 @@ function _formatNewsWatchText(groups, trending, tstr, dstr) {
     items.forEach(n => {
       const src = n.source ? ` — ${n.source}` : '';
       lines.push(`• ${n.text}${src}`);
+      if (n.shortUrl) lines.push(`   ${n.shortUrl}`);
     });
     lines.push('');
   });
