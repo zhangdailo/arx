@@ -1392,7 +1392,7 @@
             style="color:#c084fc;font-weight:700;letter-spacing:.08em;
                    border-left:1px solid rgba(168,85,247,.3);margin-left:4px;
                    background:linear-gradient(135deg,rgba(168,85,247,.1),rgba(124,58,237,.06))">
-      ⬡ Lucid
+      ⬡ Superhuman AI
     </button>
   </nav>
 </header>
@@ -2644,9 +2644,7 @@
       <!-- Header -->
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-shrink:0">
         <div style="font-size:20px;font-weight:700;letter-spacing:.18em;color:#c084fc;
-                    text-shadow:0 0 18px rgba(168,85,247,.7)">⬡ LUCID</div>
-        <div style="font-size:9px;letter-spacing:.25em;color:rgba(168,85,247,.5);
-                    border:1px solid rgba(168,85,247,.2);padding:3px 9px">EMBEDDED INTELLIGENCE</div>
+                    text-shadow:0 0 18px rgba(168,85,247,.7)">⬡ SUPERHUMAN AI</div>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
           <div id="lucidStatus" style="font-size:9px;letter-spacing:.15em;color:rgba(168,85,247,.4)">● OFFLINE</div>
           <button id="lucidKeyBtn" onclick="lucidShowKeyModal()"
@@ -2668,8 +2666,7 @@
         <!-- Welcome message -->
         <div class="lucid-msg lucid-msg-ai" id="lucidWelcome">
           <div class="lucid-bubble">
-            <span style="color:rgba(192,132,252,.6);font-size:9px;letter-spacing:.2em;display:block;margin-bottom:6px">LUCID · READY</span>
-            I'm online. Ask me anything — markets, strategy, trade ideas, platform analysis. I have full context on what's live in ARX right now.
+            ARX Oracle = HL data + ARX taxonomy + KOL wallets + social media + global news + recursive learning
           </div>
         </div>
       </div>
@@ -2678,7 +2675,7 @@
       <div style="flex-shrink:0;padding:14px 0 18px;border-top:1px solid rgba(168,85,247,.12)">
         <div style="display:flex;gap:10px;align-items:flex-end">
           <textarea id="lucidInput" rows="2"
-            placeholder="Ask Lucid anything — trade ideas, market structure, ARX data..."
+            placeholder="Ask Superhuman AI anything — trade ideas, market structure, ARX data..."
             style="flex:1;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.25);
                    color:#e0aaff;padding:10px 14px;font-family:'Courier New',monospace;font-size:12px;
                    resize:none;line-height:1.5;outline:none;
@@ -2708,7 +2705,7 @@
          align-items:center;justify-content:center">
       <div style="background:#08001a;border:1px solid rgba(168,85,247,.4);padding:32px 36px;
                   max-width:480px;width:90%;font-family:'Courier New',monospace">
-        <div style="font-size:14px;letter-spacing:.2em;color:#c084fc;margin-bottom:8px">⬡ LUCID — API KEY</div>
+        <div style="font-size:14px;letter-spacing:.2em;color:#c084fc;margin-bottom:8px">⬡ SUPERHUMAN AI — API KEY</div>
         <div style="font-size:10px;color:rgba(168,85,247,.5);letter-spacing:.08em;margin-bottom:20px;line-height:1.7">
           Your key is stored in sessionStorage (this tab only) and never sent anywhere except the Anthropic API directly.
           Get one at console.anthropic.com → API Keys.
@@ -4656,49 +4653,6 @@ const STOCK_SUB_SECTOR = {
   'NVDA':'Semiconductors','AVGO':'Semiconductors','AMD':'Semiconductors',
   'QCOM':'Semiconductors','TXN':'Semiconductors','MU':'Semiconductors',
   'AMAT':'Semicon. Equip.','LRCX':'Semicon. Equip.',
-  'AAPL':'Consumer Elec.',
-  'MSFT':'Software Infra.','ORCL':'Software Infra.','ADBE':'Software Infra.',
-  'NOW':'Software Infra.','INTU':'Software Infra.',
-  'CSCO':'Networking',
-  // Communication
-  'GOOGL':'Internet','META':'Internet',
-  'NFLX':'Entertainment','DIS':'Entertainment','CMCSA':'Media',
-  'T':'Telecom','VZ':'Telecom',
-  // Consumer Discret.
-  'AMZN':'Internet Retail','TSLA':'Automotive',
-  'HD':'Home Improvmt.','LOW':'Home Improvmt.',
-  'MCD':'Restaurants','BKNG':'Travel',
-  'NKE':'Apparel','TJX':'Apparel',
-  // Consumer Staples
-  'WMT':'Discount Stores','COST':'Discount Stores',
-  'PG':'Household Prod.','KO':'Beverages','PM':'Tobacco','MDLZ':'Food Products',
-  // Healthcare
-  'LLY':'Drug Mfrs.','JNJ':'Drug Mfrs.','MRK':'Drug Mfrs.',
-  'ABBV':'Drug Mfrs.','AMGN':'Biotech',
-  'UNH':'Healthcare Plans','TMO':'Medical Devices','ABT':'Medical Devices',
-  // Financials
-  'BRK-B':'Diversified','JPM':'Banks','BAC':'Banks','WFC':'Banks',
-  'V':'Credit Services','MA':'Credit Services',
-  'GS':'Capital Markets','MS':'Capital Markets','BLK':'Asset Mgmt','SPGI':'Capital Markets',
-  // Energy
-  'XOM':'Oil & Gas','CVX':'Oil & Gas','COP':'Oil & Gas','EOG':'Oil & Gas','SLB':'Oil Services',
-  // Industrials
-  'GE':'Aerospace & Def.','LMT':'Aerospace & Def.','RTX':'Aerospace & Def.','BA':'Aerospace & Def.',
-  'CAT':'Machinery','HON':'Machinery','UNP':'Railroads','DE':'Agri. Equipment',
-  // Materials
-  'LIN':'Industrial Gases','APD':'Industrial Gases','FCX':'Mining','NEM':'Gold Mining',
-  // Real Estate
-  'PLD':'Industrial REIT','AMT':'Infra. REIT','EQIX':'Infra. REIT',
-  'CCI':'Infra. REIT','PSA':'Self-Storage REIT',
-  // Utilities
-  'NEE':'Electric Util.','DUK':'Electric Util.','SO':'Electric Util.','AEP':'Electric Util.',
-};
-
-const STOCK_SUB_SECTOR = {
-  // Technology
-  'NVDA':'Semiconductors','AVGO':'Semiconductors','AMD':'Semiconductors',
-  'QCOM':'Semiconductors','TXN':'Semiconductors','MU':'Semiconductors',
-  'AMAT':'Semicon. Equip.','LRCX':'Semicon. Equip.',
   'AAPL':'Consumer Electronics',
   'MSFT':'Software Infra.','ORCL':'Software Infra.','ADBE':'Software Infra.',
   'NOW':'Software Infra.','INTU':'Software Infra.',
@@ -4742,37 +4696,118 @@ let usStocksLoaded = false;
 let sectorEtfCache = [];
 let sectorEtfLoaded = false;
 
-// ── Load US stocks via Yahoo Finance → allorigins proxy ────────
+// ── Load US stocks — 4-source cascade, never gets stuck ─────────
 async function loadYahooStocks() {
   const symbols = US_STOCKS.map(s => s.sym).join(',');
-  const yfUrl   = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=regularMarketPrice,regularMarketChangePercent,marketCap,shortName`;
-  const proxy   = `https://api.allorigins.win/get?url=${encodeURIComponent(yfUrl)}`;
-  try {
-    const r = await fetch(proxy, { signal: AbortSignal.timeout(14000) });
-    if (!r.ok) throw new Error('allorigins HTTP ' + r.status);
-    const outer  = await r.json();
-    const inner  = JSON.parse(outer.contents);
-    const quotes = inner?.quoteResponse?.result || [];
-    const qMap   = new Map(quotes.map(q => [q.symbol, q]));
-    usStocksCache = US_STOCKS.map(s => {
-      const q = qMap.get(s.sym);
-      if (!q || !q.regularMarketPrice) return null;
-      return { ...s, price: q.regularMarketPrice, chgPct: q.regularMarketChangePercent || 0,
-               marketCap: q.marketCap || (s.mktW * 1e12), displayName: q.shortName || s.name };
-    }).filter(Boolean);
+
+  function applyAndRender(cache) {
+    usStocksCache  = cache;
     usStocksLoaded = true;
     if (pulseFilter === 'usstocks') { updateUSStocksStats(); renderUSStocksHeatmap(); }
     if (pulseFilter === 'industry') { updateUSStocksStats(); renderIndustryHeatmap(); }
-    if (pulseFilter === 'industry') { updateUSStocksStats(); renderIndustryHeatmap(); }
-  } catch(e) {
-    console.warn('[Yahoo stocks]', e.message);
-    // Fallback: use static weights as stand-in market cap (relative sizing preserved)
-    usStocksCache = US_STOCKS.map(s => ({...s, price:0, chgPct:0,
-      marketCap: s.mktW * 1e12, displayName: s.name }));
-    usStocksLoaded = true;
-    if (pulseFilter === 'usstocks') renderUSStocksHeatmap();
-    if (pulseFilter === 'industry') renderIndustryHeatmap();
   }
+
+  function parseYahooQuotes(quotes) {
+    const qMap = new Map(quotes.map(q => [q.symbol, q]));
+    return US_STOCKS.map(s => {
+      const q = qMap.get(s.sym);
+      if (!q || !q.regularMarketPrice) return null;
+      return { ...s, price: q.regularMarketPrice,
+               chgPct: q.regularMarketChangePercent || 0,
+               marketCap: q.marketCap || (s.mktW * 1e12),
+               displayName: q.shortName || s.name };
+    }).filter(Boolean);
+  }
+
+  // ── Source 1: local proxy (fast, no CORS — needs proxy running) ──
+  if (IS_LOCAL) {
+    try {
+      const r = await fetch(
+        `http://localhost:3001/usstocks?symbols=${encodeURIComponent(symbols)}`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (!r.ok) throw new Error('proxy ' + r.status);
+      const data = await r.json();
+      const result = parseYahooQuotes(data.quotes || []);
+      if (result.length > 0) {
+        console.log('[Yahoo stocks] loaded via local proxy:', result.length);
+        applyAndRender(result); return;
+      }
+    } catch(e) { console.warn('[Yahoo stocks] local proxy:', e.message); }
+  }
+
+  // ── Source 2: corsproxy.io (faster & more reliable than allorigins) ─
+  const yfUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbols)}&fields=regularMarketPrice,regularMarketChangePercent,marketCap,shortName`;
+  try {
+    const r = await fetch(
+      `https://corsproxy.io/?url=${encodeURIComponent(yfUrl)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!r.ok) throw new Error('corsproxy ' + r.status);
+    const inner  = await r.json();
+    const result = parseYahooQuotes(inner?.quoteResponse?.result || []);
+    if (result.length > 0) {
+      console.log('[Yahoo stocks] loaded via corsproxy.io:', result.length);
+      applyAndRender(result); return;
+    }
+  } catch(e) { console.warn('[Yahoo stocks] corsproxy.io:', e.message); }
+
+  // ── Source 3: allorigins.win ─────────────────────────────────────
+  try {
+    const r = await fetch(
+      `https://api.allorigins.win/get?url=${encodeURIComponent(yfUrl)}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!r.ok) throw new Error('allorigins ' + r.status);
+    const outer  = await r.json();
+    const result = parseYahooQuotes(JSON.parse(outer.contents)?.quoteResponse?.result || []);
+    if (result.length > 0) {
+      console.log('[Yahoo stocks] loaded via allorigins:', result.length);
+      applyAndRender(result); return;
+    }
+  } catch(e) { console.warn('[Yahoo stocks] allorigins:', e.message); }
+
+  // ── Source 4: Finnhub direct — top-20 stocks by weight (~10s, bypasses queue throttle) ──
+  // fhEnqueue throttles at 1111ms/call → 70 stocks = 77s. Instead fetch top-20 directly:
+  // covers ~50% market cap, colours the most visible tiles immediately.
+  console.warn('[Yahoo stocks] falling back to Finnhub direct (top-20)...');
+  try {
+    const top20 = [...US_STOCKS].sort((a,b) => b.mktW - a.mktW).slice(0, 20);
+    const BATCH = 4, DELAY = 1200; // 4 calls/1.2s = 3.3/s — safe for Finnhub free (60/min)
+    const all = [];
+    for (let i = 0; i < top20.length; i += BATCH) {
+      const slice = top20.slice(i, i + BATCH);
+      const res = await Promise.allSettled(
+        slice.map(async s => {
+          try {
+            const url = `${FH_REST}/quote?symbol=${encodeURIComponent(s.sym)}&token=${FH_KEY}`;
+            const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            if (!r.ok) return null;
+            const d = await r.json();
+            if (!d || !d.c) return null;
+            return { ...s, price: d.c, chgPct: d.dp ?? 0,
+                     marketCap: s.mktW * 1e12, displayName: s.name };
+          } catch(e) { return null; }
+        })
+      );
+      res.forEach(r => { if (r.status === 'fulfilled' && r.value) all.push(r.value); });
+      if (i + BATCH < top20.length) await new Promise(r => setTimeout(r, DELAY));
+    }
+    // Merge top-20 live prices into static fallback for full layout
+    const liveMap = new Map(all.map(s => [s.sym, s]));
+    const merged = US_STOCKS.map(s => liveMap.get(s.sym) || {...s, price:0, chgPct:0,
+      marketCap: s.mktW * 1e12, displayName: s.name });
+    if (all.length > 0) {
+      console.log('[Yahoo stocks] loaded via Finnhub direct:', all.length, 'of top-20');
+      applyAndRender(merged); return;
+    }
+  } catch(e) { console.warn('[Yahoo stocks] Finnhub direct failed:', e.message); }
+
+  // ── Static fallback — layout only, no live prices ────────────────
+  console.warn('[Yahoo stocks] all sources failed — showing static layout');
+  applyAndRender(US_STOCKS.map(s => ({
+    ...s, price: 0, chgPct: 0, marketCap: s.mktW * 1e12, displayName: s.name
+  })));
 }
 
 // ── Load sector ETFs via Finnhub ───────────────────────────────
@@ -5085,19 +5120,22 @@ function pulseCat(name) {
 
 // ── Color scale (Finviz-style red → grey → green) ─────────
 function heatColor(chg) {
-  const c = Math.max(-8, Math.min(8, chg || 0));
+  // Scale tightened to ±3% so typical stock moves show vivid colour
+  const c = Math.max(-3, Math.min(3, chg || 0));
   if (Math.abs(c) < 0.05) return '#1c1c2e';
   if (c > 0) {
-    const t = c / 8;
-    const r = Math.round(22  + t * (16 - 22));
-    const g = Math.round(46  + t * (163 - 46));
-    const b = Math.round(22  + t * (74 - 22));
+    const t = c / 3;
+    // dark green → bright green: (22,46,22) → (16,185,74)
+    const r = Math.round(22  + t * (16  - 22));
+    const g = Math.round(46  + t * (185 - 46));
+    const b = Math.round(22  + t * (74  - 22));
     return `rgb(${r},${g},${b})`;
   } else {
-    const t = -c / 8;
-    const r = Math.round(46  + t * (220 - 46));
-    const g = Math.round(22  + t * (38 - 22));
-    const b = Math.round(22  + t * (38 - 22));
+    const t = -c / 3;
+    // dark red → bright red: (46,22,22) → (239,50,50)
+    const r = Math.round(46  + t * (239 - 46));
+    const g = Math.round(22  + t * (50  - 22));
+    const b = Math.round(22  + t * (50  - 22));
     return `rgb(${r},${g},${b})`;
   }
 }
@@ -9995,7 +10033,7 @@ function _buildLucidContext_legacy() {
 // ── System prompt ─────────────────────────────────────────
 function buildLucidSystem() {
   const uid = window.ARX_USER?.uid || 'the operator';
-  return `You are Lucid — the embedded intelligence of the ARX trading command bridge. You run inside ARX, a real-time crypto and equities intelligence dashboard built by Daryl (${uid}) in Singapore.
+  return `You are Superhuman AI — the embedded intelligence of the ARX trading command bridge. You run inside ARX, a real-time crypto and equities intelligence dashboard built by Daryl (${uid}) in Singapore.
 
 ARX platform capabilities: Hyperliquid perpetuals (funding rates, OI, liquidations, price data), Finnhub US equities, DailoPulse (news + signals), Whale tracker, RSI scanner, Funding Map, Screener, Predictions engine, Flows, Blast (broadcast comms).
 
