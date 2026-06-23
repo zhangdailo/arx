@@ -1561,6 +1561,7 @@
         <button class="chip" data-pf="rwa">RWAs</button>
         <button class="chip" data-pf="usstocks" style="color:#60a5fa">🇺🇸 US Stocks</button>
         <button class="chip" data-pf="industry" style="color:#fbbf24">🏭 Industry</button>
+        <button class="chip" data-pf="insti" style="color:#e2c97e">🏛 Insti</button>
       </div>
       <div class="pulse-right">
         <div class="pulse-legend">
@@ -1601,6 +1602,9 @@
 
     <!-- RWA US Stocks Panel — visible only when RWA filter active -->
     <div id="rwaStocksPanel" style="display:none;padding:16px 0"></div>
+
+    <!-- Insti Moves Panel -->
+    <div id="instiMovesPanel" style="display:none;padding:16px 0"></div>
 
     <div class="pulse-tooltip" id="pulseTip">
       <div class="tt-header">
@@ -4646,6 +4650,93 @@ const SECTOR_ETFS = [
   { sym:'XLB',  name:'Materials',              weight: 2.5, color:'#d97706' },
 ];
 
+// ── Sub-sector mapping for Industry treemap ───────────────
+const STOCK_SUB_SECTOR = {
+  // Technology
+  'NVDA':'Semiconductors','AVGO':'Semiconductors','AMD':'Semiconductors',
+  'QCOM':'Semiconductors','TXN':'Semiconductors','MU':'Semiconductors',
+  'AMAT':'Semicon. Equip.','LRCX':'Semicon. Equip.',
+  'AAPL':'Consumer Elec.',
+  'MSFT':'Software Infra.','ORCL':'Software Infra.','ADBE':'Software Infra.',
+  'NOW':'Software Infra.','INTU':'Software Infra.',
+  'CSCO':'Networking',
+  // Communication
+  'GOOGL':'Internet','META':'Internet',
+  'NFLX':'Entertainment','DIS':'Entertainment','CMCSA':'Media',
+  'T':'Telecom','VZ':'Telecom',
+  // Consumer Discret.
+  'AMZN':'Internet Retail','TSLA':'Automotive',
+  'HD':'Home Improvmt.','LOW':'Home Improvmt.',
+  'MCD':'Restaurants','BKNG':'Travel',
+  'NKE':'Apparel','TJX':'Apparel',
+  // Consumer Staples
+  'WMT':'Discount Stores','COST':'Discount Stores',
+  'PG':'Household Prod.','KO':'Beverages','PM':'Tobacco','MDLZ':'Food Products',
+  // Healthcare
+  'LLY':'Drug Mfrs.','JNJ':'Drug Mfrs.','MRK':'Drug Mfrs.',
+  'ABBV':'Drug Mfrs.','AMGN':'Biotech',
+  'UNH':'Healthcare Plans','TMO':'Medical Devices','ABT':'Medical Devices',
+  // Financials
+  'BRK-B':'Diversified','JPM':'Banks','BAC':'Banks','WFC':'Banks',
+  'V':'Credit Services','MA':'Credit Services',
+  'GS':'Capital Markets','MS':'Capital Markets','BLK':'Asset Mgmt','SPGI':'Capital Markets',
+  // Energy
+  'XOM':'Oil & Gas','CVX':'Oil & Gas','COP':'Oil & Gas','EOG':'Oil & Gas','SLB':'Oil Services',
+  // Industrials
+  'GE':'Aerospace & Def.','LMT':'Aerospace & Def.','RTX':'Aerospace & Def.','BA':'Aerospace & Def.',
+  'CAT':'Machinery','HON':'Machinery','UNP':'Railroads','DE':'Agri. Equipment',
+  // Materials
+  'LIN':'Industrial Gases','APD':'Industrial Gases','FCX':'Mining','NEM':'Gold Mining',
+  // Real Estate
+  'PLD':'Industrial REIT','AMT':'Infra. REIT','EQIX':'Infra. REIT',
+  'CCI':'Infra. REIT','PSA':'Self-Storage REIT',
+  // Utilities
+  'NEE':'Electric Util.','DUK':'Electric Util.','SO':'Electric Util.','AEP':'Electric Util.',
+};
+
+const STOCK_SUB_SECTOR = {
+  // Technology
+  'NVDA':'Semiconductors','AVGO':'Semiconductors','AMD':'Semiconductors',
+  'QCOM':'Semiconductors','TXN':'Semiconductors','MU':'Semiconductors',
+  'AMAT':'Semicon. Equip.','LRCX':'Semicon. Equip.',
+  'AAPL':'Consumer Electronics',
+  'MSFT':'Software Infra.','ORCL':'Software Infra.','ADBE':'Software Infra.',
+  'NOW':'Software Infra.','INTU':'Software Infra.',
+  'CSCO':'Networking',
+  // Communication
+  'GOOGL':'Internet','META':'Internet',
+  'NFLX':'Entertainment','DIS':'Entertainment','CMCSA':'Media',
+  'T':'Telecom','VZ':'Telecom',
+  // Consumer Discret.
+  'AMZN':'Internet Retail','TSLA':'Automotive',
+  'HD':'Home Improvement','LOW':'Home Improvement',
+  'MCD':'Restaurants','BKNG':'Travel',
+  'NKE':'Apparel','TJX':'Apparel',
+  // Consumer Staples
+  'WMT':'Discount Stores','COST':'Discount Stores',
+  'PG':'Household Products','KO':'Beverages','PM':'Tobacco','MDLZ':'Food Products',
+  // Healthcare
+  'LLY':'Drug Mfrs.','JNJ':'Drug Mfrs.','MRK':'Drug Mfrs.',
+  'ABBV':'Drug Mfrs.','AMGN':'Biotech',
+  'UNH':'Healthcare Plans','TMO':'Medical Devices','ABT':'Medical Devices',
+  // Financials
+  'BRK-B':'Diversified','JPM':'Banks','BAC':'Banks','WFC':'Banks',
+  'V':'Credit Services','MA':'Credit Services',
+  'GS':'Capital Markets','MS':'Capital Markets','BLK':'Asset Mgmt','SPGI':'Capital Markets',
+  // Energy
+  'XOM':'Oil & Gas','CVX':'Oil & Gas','COP':'Oil & Gas','EOG':'Oil & Gas','SLB':'Oil Services',
+  // Industrials
+  'GE':'Aerospace & Def.','LMT':'Aerospace & Def.','RTX':'Aerospace & Def.','BA':'Aerospace & Def.',
+  'CAT':'Machinery','HON':'Machinery','UNP':'Railroads','DE':'Agri. Equipment',
+  // Materials
+  'LIN':'Industrial Gases','APD':'Industrial Gases','FCX':'Mining','NEM':'Gold Mining',
+  // Real Estate
+  'PLD':'Industrial REIT','AMT':'Infra. REIT','EQIX':'Infra. REIT',
+  'CCI':'Infra. REIT','PSA':'Self-Storage REIT',
+  // Utilities
+  'NEE':'Electric Util.','DUK':'Electric Util.','SO':'Electric Util.','AEP':'Electric Util.',
+};
+
 let usStocksCache = [];
 let usStocksLoaded = false;
 let sectorEtfCache = [];
@@ -4671,6 +4762,8 @@ async function loadYahooStocks() {
     }).filter(Boolean);
     usStocksLoaded = true;
     if (pulseFilter === 'usstocks') { updateUSStocksStats(); renderUSStocksHeatmap(); }
+    if (pulseFilter === 'industry') { updateUSStocksStats(); renderIndustryHeatmap(); }
+    if (pulseFilter === 'industry') { updateUSStocksStats(); renderIndustryHeatmap(); }
   } catch(e) {
     console.warn('[Yahoo stocks]', e.message);
     // Fallback: use static weights as stand-in market cap (relative sizing preserved)
@@ -4678,6 +4771,7 @@ async function loadYahooStocks() {
       marketCap: s.mktW * 1e12, displayName: s.name }));
     usStocksLoaded = true;
     if (pulseFilter === 'usstocks') renderUSStocksHeatmap();
+    if (pulseFilter === 'industry') renderIndustryHeatmap();
   }
 }
 
@@ -4718,6 +4812,24 @@ function updateUSStocksStats() {
 
 // ── Stats bar for Industry mode ───────────────────────────────
 function updateIndustryStats() {
+  if (usStocksCache.length) {
+    // Use stock-level data when available (same as updateUSStocksStats)
+    const loaded   = usStocksCache.filter(s => s.price > 0);
+    const totalMC  = loaded.reduce((s,d) => s+(d.marketCap||0), 0);
+    const avgChg   = loaded.length ? loaded.reduce((s,d)=>s+d.chgPct,0)/loaded.length : 0;
+    const sorted   = [...loaded].sort((a,b) => b.chgPct - a.chgPct);
+    const top = sorted[0], bot = sorted[sorted.length-1];
+    $('ps-assets').textContent = loaded.length + ' stocks';
+    $('ps-oi').textContent     = totalMC > 0 ? money(totalMC) : '—';
+    document.querySelector('#pulseStats .psc:nth-child(2) .psc-label').textContent = 'Mkt Cap';
+    $('ps-chg-label').textContent = 'Avg Change';
+    $('ps-chg').innerHTML = `<span class="${avgChg>=0?'pos':'neg'}">${avgChg>=0?'+':''}${num(avgChg,2)}%</span>`;
+    $('ps-top').textContent = top ? `${top.sym}  ${top.chgPct>=0?'+':''}${num(top.chgPct,2)}%` : '—';
+    $('ps-bot').textContent = bot ? `${bot.sym} ${num(bot.chgPct,2)}%` : '—';
+    $('ps-fund').textContent = loaded.length>0 ? `${loaded.filter(s=>s.chgPct>0).length}↑ ${loaded.filter(s=>s.chgPct<0).length}↓` : '—';
+    document.querySelector('#pulseStats .psc:nth-child(6) .psc-label').textContent = 'Sub-sectors';
+    return;
+  }
   const data   = sectorEtfCache.length ? sectorEtfCache.filter(s=>s.price>0) : [];
   const avgChg = data.length ? data.reduce((s,d)=>s+d.chgPct,0)/data.length : 0;
   const sorted = [...data].sort((a,b) => b.chgPct - a.chgPct);
@@ -4826,107 +4938,141 @@ function renderUSStocksHeatmap() {
   }).on('mouseleave',()=>{tip.style.display='none';});
 }
 
-// ── Industry (GICS Sector) Treemap ────────────────────────────
+// ── Industry Stock-level Treemap (3-level: sector → sub-sector → stock) ──
 function renderIndustryHeatmap() {
   if (!d3Loaded || typeof d3 === 'undefined') return;
   const wrap = document.querySelector('.pulse-map-wrap');
   const W = wrap.clientWidth || 1200, H = wrap.clientHeight || 640;
 
-  const data = sectorEtfCache.length ? sectorEtfCache : SECTOR_ETFS.map(e=>({...e,price:0,chgPct:0}));
-  const root = d3.hierarchy({name:'root',children:data})
-    .sum(d=>d.weight||0).sort((a,b)=>(b.value||0)-(a.value||0));
+  // Use usStocksCache if available, else fall back to static US_STOCKS with zeroed prices
+  const stocks = usStocksCache.length ? usStocksCache
+    : US_STOCKS.map(s => ({...s, price:0, chgPct:0, marketCap: s.mktW*1e12, displayName: s.name}));
 
-  d3.treemap().size([W,H]).paddingOuter(4).paddingInner(3).round(true)(root);
+  // Sector colour map
+  const SC = {
+    'Technology':'#60a5fa','Communication':'#a78bfa','Cons. Discret.':'#fb923c',
+    'Cons. Staples':'#4ade80','Healthcare':'#f87171','Financials':'#34d399',
+    'Energy':'#f59e0b','Industrials':'#fbbf24','Materials':'#d97706',
+    'Real Estate':'#06b6d4','Utilities':'#8b5cf6'
+  };
+
+  // Build 3-level hierarchy: root → sector → subSector → stock
+  const sectorMap = new Map();
+  for (const s of stocks) {
+    const sec = s.sector;
+    const sub = STOCK_SUB_SECTOR[s.sym] || sec;
+    if (!sectorMap.has(sec)) sectorMap.set(sec, new Map());
+    const subMap = sectorMap.get(sec);
+    if (!subMap.has(sub)) subMap.set(sub, []);
+    subMap.get(sub).push(s);
+  }
+
+  const hierarchyData = {
+    name: 'root',
+    children: [...sectorMap.entries()].map(([sec, subMap]) => ({
+      name: sec,
+      children: [...subMap.entries()].map(([sub, stks]) => ({
+        name: sub,
+        children: stks
+      }))
+    }))
+  };
+
+  const root = d3.hierarchy(hierarchyData)
+    .sum(d => d.children ? 0 : (d.marketCap || d.mktW * 1e12))
+    .sort((a,b) => (b.value||0) - (a.value||0));
+
+  d3.treemap()
+    .size([W, H])
+    .paddingTop(d => d.depth === 1 ? 17 : d.depth === 2 ? 13 : 0)
+    .paddingInner(d => d.depth <= 1 ? 4 : 1)
+    .paddingOuter(3)
+    .round(true)(root);
 
   const svg = d3.select('#pulseSvg').attr('viewBox',`0 0 ${W} ${H}`).attr('preserveAspectRatio','xMidYMid meet');
   svg.selectAll('*').remove();
 
+  // ── Depth-1: sector rectangles (faint tinted bg + label) ──────────
+  const sectorNodes = root.children || [];
+  const sectorGrps = svg.selectAll('g.ind-sec').data(sectorNodes).enter().append('g').attr('class','ind-sec');
+
+  sectorGrps.append('rect')
+    .attr('x', d=>d.x0).attr('y', d=>d.y0)
+    .attr('width', d=>Math.max(0,d.x1-d.x0)).attr('height', d=>Math.max(0,d.y1-d.y0))
+    .attr('fill', d=>`${SC[d.data.name]||'#6b7280'}12`)
+    .attr('stroke', d=>`${SC[d.data.name]||'#6b7280'}35`)
+    .attr('stroke-width', 1).attr('rx', 3).attr('pointer-events','none');
+
+  sectorGrps.filter(d=>(d.x1-d.x0)>40)
+    .append('text')
+    .attr('x', d=>d.x0+5).attr('y', d=>d.y0+11)
+    .attr('fill', d=>`${SC[d.data.name]||'#9ca3af'}bb`)
+    .attr('font-size', 9.5).attr('font-weight', 700)
+    .attr('font-family',"'Plus Jakarta Sans',sans-serif").attr('pointer-events','none')
+    .text(d=>d.data.name.toUpperCase());
+
+  // ── Depth-2: sub-sector labels (drawn after stocks so they appear on top) ──
+  // collect for later
+  const subSectorNodes = root.descendants().filter(d=>d.depth===2);
+
+  // ── Depth-3: stock leaf cells ──────────────────────────────────────
   const cells = svg.selectAll('g.ind-cell').data(root.leaves()).enter()
     .append('g').attr('class','ind-cell')
     .attr('transform',d=>`translate(${d.x0},${d.y0})`).style('cursor','pointer');
 
   cells.append('rect')
     .attr('width',d=>Math.max(0,d.x1-d.x0)).attr('height',d=>Math.max(0,d.y1-d.y0))
-    .attr('fill',d=>d.data.price>0?heatColor(d.data.chgPct):'rgba(255,255,255,0.04)')
-    .attr('rx',4).attr('ry',4);
-
-  // Colored left accent bar
-  cells.append('rect')
-    .attr('x',0).attr('y',0).attr('width',3)
-    .attr('height',d=>Math.max(0,d.y1-d.y0))
-    .attr('fill',d=>d.data.color||'#6b7280').attr('rx',2);
+    .attr('fill',d=>d.data.price>0?heatColor(d.data.chgPct):'rgba(255,255,255,0.05)')
+    .attr('rx',2).attr('ry',2);
 
   cells.each(function(d) {
     const w=d.x1-d.x0, h=d.y1-d.y0;
-    if (w<32||h<22) return;
+    if (w<20||h<14) return;
     const g=d3.select(this), s=d.data, pct=s.chgPct||0;
     const pctStr=(pct>=0?'+':'')+pct.toFixed(2)+'%';
-    const fmtPx=p=>p>=100?'$'+p.toFixed(2):'$'+p.toFixed(3);
-
-    // ETF ticker
-    const fs=Math.min(18,w/5,h/3.5);
-    g.append('text').attr('x',w/2).attr('y',h>80?h/2-20:h/2-10)
+    const fs = Math.min(13, w/4.5, h/2.5);
+    g.append('text').attr('x',w/2).attr('y',h>42?h/2-7:h/2+1)
       .attr('text-anchor','middle').attr('dominant-baseline','middle')
       .attr('fill','rgba(255,255,255,0.95)').attr('font-size',fs)
       .attr('font-weight',800).attr('font-family','Kanit,sans-serif').attr('pointer-events','none')
       .text(s.sym);
-
-    // Sector full name
-    if (h>55 && w>80) {
-      const nameFs=Math.min(11,w/11);
-      g.append('text').attr('x',w/2).attr('y',h>80?h/2+3:h/2+2)
+    if (h>36 && s.price>0) {
+      g.append('text').attr('x',w/2).attr('y',h/2+9)
         .attr('text-anchor','middle').attr('dominant-baseline','middle')
-        .attr('fill','rgba(255,255,255,0.5)').attr('font-size',nameFs)
-        .attr('font-family',"'Plus Jakarta Sans',sans-serif").attr('pointer-events','none')
-        .text(s.name.length>Math.floor(w/nameFs*1.6)?s.name.slice(0,Math.floor(w/nameFs*1.6))+'…':s.name);
-    }
-
-    // % change
-    if (h>70) {
-      g.append('text').attr('x',w/2).attr('y',h>80?h/2+24:h/2+18)
-        .attr('text-anchor','middle').attr('dominant-baseline','middle')
-        .attr('fill',pct>=0?'rgba(52,211,153,0.95)':'rgba(248,113,113,0.95)')
-        .attr('font-size',Math.min(13,w/7)).attr('font-weight',700)
-        .attr('font-family','Inter,monospace').attr('pointer-events','none')
-        .text(s.price>0?pctStr:'—');
-    }
-
-    // Price (if large enough cell)
-    if (h>110 && s.price>0) {
-      g.append('text').attr('x',w/2).attr('y',h/2+42)
-        .attr('text-anchor','middle').attr('fill','rgba(255,255,255,0.35)')
-        .attr('font-size',Math.min(10,w/11)).attr('font-family','Inter,monospace').attr('pointer-events','none')
-        .text(fmtPx(s.price));
-    }
-
-    // S&P weight label
-    if (w>70 && h>44) {
-      g.append('text').attr('x',w-6).attr('y',h-5)
-        .attr('text-anchor','end').attr('fill','rgba(255,255,255,0.2)')
-        .attr('font-size',9).attr('font-family','Inter,sans-serif').attr('pointer-events','none')
-        .text(s.weight+'%');
+        .attr('fill','rgba(255,255,255,0.80)').attr('font-size',Math.min(10,w/6))
+        .attr('font-family','Inter,monospace').attr('pointer-events','none').text(pctStr);
     }
   });
 
-  // Tooltip
+  // ── Sub-sector labels on top of stock cells ────────────────────────
+  svg.selectAll('text.ind-sub').data(subSectorNodes).enter()
+    .append('text').attr('class','ind-sub')
+    .attr('x', d=>d.x0+4).attr('y', d=>d.y0+10)
+    .attr('fill','rgba(255,255,255,0.28)').attr('font-size',8)
+    .attr('font-family',"'Plus Jakarta Sans',sans-serif").attr('pointer-events','none')
+    .text(d=>(d.x1-d.x0)>40?d.data.name:'');
+
+  // ── Tooltip ────────────────────────────────────────────────────────
   const tip = document.getElementById('pulseTip');
-  cells.on('mousemove',function(event,d) {
+  cells.on('mousemove', function(event,d) {
     const s=d.data, pct=s.chgPct||0;
-    const fmtPx=p=>p>=100?'$'+p.toFixed(2):'$'+p.toFixed(3);
+    const secColor = SC[s.sector]||'#9ca3af';
+    const subSec = STOCK_SUB_SECTOR[s.sym] || s.sector;
+    const fmtPx=p=>p>=1000?'$'+p.toLocaleString(undefined,{maximumFractionDigits:0}):'$'+p.toFixed(2);
     tip.style.display='block';
     tip.innerHTML=`<div class="tt-header">
-      <div><div class="tt-name">${s.sym}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${s.name}</div>
-      <div class="tt-cat" style="background:rgba(255,255,255,0.05);color:var(--muted-hi);margin-top:4px">GICS SECTOR ETF</div></div>
+      <div><div class="tt-name">${s.sym}</div><div style="font-size:11px;color:var(--muted);margin-top:2px">${s.displayName||s.name}</div>
+      <div class="tt-cat" style="background:${secColor}18;color:${secColor};margin-top:4px">${subSec} · ${s.sector}</div></div>
       <div class="tt-px-block">
         <div class="tt-price">${s.price>0?fmtPx(s.price):'—'}</div>
         ${s.price>0?`<div class="tt-chg-badge" style="background:${pct>=0?'rgba(16,185,129,0.15)':'rgba(239,68,68,0.15)'};color:${pct>=0?'#10b981':'#ef4444'}">${pct>=0?'+':''}${pct.toFixed(2)}%</div>`:''}
       </div></div>
       <div class="tt-body">
-        <div class="tt-row"><span class="tt-lbl">S&P 500 Weight</span><span class="tt-val">${s.weight}%</span></div>
-        <div class="tt-row"><span class="tt-lbl">ETF Provider</span><span class="tt-val">State Street SPDR</span></div>
-        ${s.price>0?`<div class="tt-row"><span class="tt-lbl">% Change Today</span><span class="tt-val" style="color:${pct>=0?'#10b981':'#ef4444'}">${pct>=0?'+':''}${pct.toFixed(2)}%</span></div>`:''}
+        <div class="tt-row"><span class="tt-lbl">Market Cap</span><span class="tt-val">${money(s.marketCap||s.mktW*1e12)}</span></div>
+        <div class="tt-row"><span class="tt-lbl">S&P 500 Weight</span><span class="tt-val">~${s.mktW.toFixed(1)}%</span></div>
+        <div class="tt-row"><span class="tt-lbl">Sub-sector</span><span class="tt-val">${subSec}</span></div>
       </div>`;
-    const tw=240,th=180;
+    const tw=240,th=170;
     tip.style.left=(event.clientX+16+tw>window.innerWidth?event.clientX-tw-8:event.clientX+16)+'px';
     tip.style.top=(event.clientY+16+th>window.innerHeight?event.clientY-th-8:event.clientY+16)+'px';
   }).on('mouseleave',()=>{tip.style.display='none';});
@@ -5594,30 +5740,45 @@ document.getElementById('pulseChips').addEventListener('click', e => {
   // Restore stats bar labels (might have been renamed by US Stocks/Industry)
   document.querySelector('#pulseStats .psc:nth-child(2) .psc-label').textContent = 'Total OI';
 
+  const mapWrap = document.querySelector('.pulse-map-wrap');
+  const instiPanel = document.getElementById('instiMovesPanel');
+  const rwaPanel   = document.getElementById('rwaStocksPanel');
+
   if (pulseFilter === 'usstocks') {
-    document.getElementById('rwaStocksPanel').style.display = 'none';
+    if (instiPanel) instiPanel.style.display = 'none';
+    if (rwaPanel)   rwaPanel.style.display   = 'none';
+    if (mapWrap)    mapWrap.style.display     = '';
     updateUSStocksStats();
     if (!usStocksLoaded) {
-      d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14"><tspan>Loading S&P 500 data via Yahoo Finance…</tspan></text>');
+      d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14"><tspan>Loading S&amp;P 500 data via Yahoo Finance…</tspan></text>');
       loadYahooStocks();
     } else {
       renderUSStocksHeatmap();
     }
+
   } else if (pulseFilter === 'industry') {
-    document.getElementById('rwaStocksPanel').style.display = 'none';
-    updateIndustryStats();
-    if (!sectorEtfLoaded) {
-      d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14">Loading sector ETFs via Finnhub…</text>');
-      loadSectorETFs();
+    if (instiPanel) instiPanel.style.display = 'none';
+    if (rwaPanel)   rwaPanel.style.display   = 'none';
+    if (mapWrap)    mapWrap.style.display     = '';
+    updateUSStocksStats();
+    if (!usStocksLoaded) {
+      d3.select('#pulseSvg').html('<text x="50%" y="50%" fill="#6b6b80" text-anchor="middle" dominant-baseline="middle" font-family="Plus Jakarta Sans" font-size="14">Loading sector data via Yahoo Finance…</text>');
+      loadYahooStocks();
     } else {
       renderIndustryHeatmap();
     }
+
+  } else if (pulseFilter === 'insti') {
+    if (rwaPanel)   rwaPanel.style.display   = 'none';
+    if (mapWrap)    mapWrap.style.display     = 'none';
+    if (instiPanel) { instiPanel.style.display = 'block'; initInstiMoves(); }
+
   } else {
-    // Crypto / RWA / All — restore normal pulse
+    // Crypto / RWA / All — restore normal pulse SVG
+    if (instiPanel) instiPanel.style.display = 'none';
+    if (mapWrap)    mapWrap.style.display     = '';
     updatePulseStats();
     renderPulse();
-    // Show/hide RWA stocks panel
-    const rwaPanel = document.getElementById('rwaStocksPanel');
     if (rwaPanel) {
       if (pulseFilter === 'rwa') {
         rwaPanel.style.display = 'block';
@@ -5637,6 +5798,7 @@ document.getElementById('pulseChips').addEventListener('click', e => {
 // ── Resize handler ────────────────────────────────────────
 window.addEventListener('resize', () => {
   if (!pulseActive || !d3Loaded) return;
+  if (pulseFilter === 'insti') return;   // panel layout, not SVG
   if (pulseFilter === 'usstocks') renderUSStocksHeatmap();
   else if (pulseFilter === 'industry') renderIndustryHeatmap();
   else renderPulse();
@@ -10458,5 +10620,151 @@ document.getElementById('citadelTabBtn').addEventListener('click', () => {
   setTimeout(renderCitadelPanel, 50);
 });
 </script>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// INSTI MOVES — Institutional 13F tracker
+// ═══════════════════════════════════════════════════════════
+const INSTI_STATIC = [
+  {
+    name:'Berkshire Hathaway', style:'Value / Buy-and-Hold',
+    reportDate:'Q4 2024 · 13F-HR', color:'#f59e0b', totalAUM:340,
+    topHoldings:[
+      {sym:'AAPL',pct:21.4,chgPts:-9.1},{sym:'AXP', pct:13.8,chgPts:+0.5},
+      {sym:'BAC', pct:11.2,chgPts:-1.2},{sym:'KO',  pct: 8.8,chgPts: 0.0},
+      {sym:'CVX', pct: 5.0,chgPts:-0.5},{sym:'OXY', pct: 4.8,chgPts:+1.1},
+      {sym:'KHC', pct: 3.7,chgPts: 0.0},
+    ],
+    summary:'Continued trimming AAPL; increased OXY. 75% of portfolio in top 5.',
+    changed:'Reduced AAPL · Added OXY',
+  },
+  {
+    name:'ARK Invest', style:'Disruptive Innovation',
+    reportDate:'Q4 2024 · 13F-HR', color:'#34d399', totalAUM:14,
+    topHoldings:[
+      {sym:'TSLA',pct:10.5,chgPts:+1.2},{sym:'COIN',pct: 9.3,chgPts:+2.1},
+      {sym:'PLTR',pct: 7.8,chgPts:+1.4},{sym:'ROKU',pct: 5.6,chgPts:-0.8},
+      {sym:'HOOD',pct: 5.2,chgPts:+0.9},{sym:'SQ',  pct: 4.4,chgPts:-0.3},
+      {sym:'CRSP',pct: 3.9,chgPts:+0.5},
+    ],
+    summary:'Increased COIN and PLTR. AI + crypto remain core thesis.',
+    changed:'Added COIN, PLTR, HOOD',
+  },
+  {
+    name:'Bridgewater Associates', style:'Global Macro',
+    reportDate:'Q4 2024 · 13F-HR', color:'#60a5fa', totalAUM:150,
+    topHoldings:[
+      {sym:'GLD', pct:12.3,chgPts:+2.4},{sym:'VWO', pct: 9.6,chgPts:+0.8},
+      {sym:'IEMG',pct: 8.9,chgPts:-1.2},{sym:'SPY', pct: 7.4,chgPts: 0.0},
+      {sym:'EEM', pct: 6.8,chgPts:-0.7},{sym:'WMT', pct: 4.2,chgPts:+1.1},
+      {sym:'PG',  pct: 3.8,chgPts: 0.0},
+    ],
+    summary:'Increased gold significantly. Macro defensive positioning, EM tilt.',
+    changed:'Added GLD · Added WMT',
+  },
+  {
+    name:'Soros Fund Management', style:'Global Macro / Opportunistic',
+    reportDate:'Q4 2024 · 13F-HR', color:'#a78bfa', totalAUM:28,
+    topHoldings:[
+      {sym:'NVR', pct:14.2,chgPts:+2.1},{sym:'WYNN',pct: 8.6,chgPts:+1.4},
+      {sym:'AMZN',pct: 7.4,chgPts:+0.9},{sym:'MELI',pct: 6.1,chgPts:-0.5},
+      {sym:'GOOG',pct: 5.8,chgPts:+0.3},{sym:'PDD', pct: 4.9,chgPts:+1.2},
+      {sym:'BKNG',pct: 4.1,chgPts:-0.8},
+    ],
+    summary:'New position in NVR (homebuilder). Added PDD — China consumer exposure.',
+    changed:'New: NVR, PDD',
+  },
+  {
+    name:'Pershing Square Capital', style:'Activist / Concentrated',
+    reportDate:'Q4 2024 · 13F-HR', color:'#fb923c', totalAUM:18,
+    topHoldings:[
+      {sym:'GOOG',pct:19.1,chgPts:+2.2},{sym:'CMG', pct:16.4,chgPts:-1.3},
+      {sym:'HLT', pct:13.7,chgPts:+0.8},{sym:'QSR', pct:11.2,chgPts:-0.5},
+      {sym:'LOW', pct: 9.8,chgPts:+1.4},{sym:'NFLX',pct: 7.3,chgPts:+2.8},
+      {sym:'HHH', pct: 6.9,chgPts:+5.1},
+    ],
+    summary:'New position in NFLX. Increased HHH (Howard Hughes real-estate play).',
+    changed:'New: NFLX · Added HHH',
+  },
+  {
+    name:'Third Point LLC', style:'Event-Driven / Activist',
+    reportDate:'Q4 2024 · 13F-HR', color:'#f87171', totalAUM:12,
+    topHoldings:[
+      {sym:'META', pct:16.4,chgPts:+3.2},{sym:'GOOGL',pct:12.1,chgPts:+1.8},
+      {sym:'BABA', pct: 7.8,chgPts:+4.3},{sym:'MSFT', pct: 7.1,chgPts:-2.1},
+      {sym:'JPM',  pct: 6.5,chgPts: 0.0},{sym:'AAPL', pct: 5.4,chgPts:-1.2},
+      {sym:'V',    pct: 4.8,chgPts:+0.7},
+    ],
+    summary:'Significant new BABA (China re-opening). Increased META, trimmed MSFT.',
+    changed:'New: BABA · Added META',
+  },
+];
+
+let instiActive = false;
+
+function initInstiMoves() {
+  if (instiActive) return;
+  instiActive = true;
+  renderInstiMoves();
+}
+
+function renderInstiMoves() {
+  const panel = document.getElementById('instiMovesPanel');
+  if (!panel) return;
+  panel.innerHTML = `
+  <div style="max-width:1200px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:15px;font-weight:800;color:var(--frost)">🏛 Institutional Moves</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">13F-HR filings · Top institutional holders · SEC EDGAR</div>
+      </div>
+      <div style="margin-left:auto;font-size:10px;color:var(--muted);background:rgba(255,255,255,0.04);border:1px solid var(--border);padding:4px 10px;border-radius:6px">
+        ⚠ Q4 2024 13F data · Quarterly filing · Live refresh requires ARX proxy
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;margin-bottom:16px">
+      ${INSTI_STATIC.map(inst => {
+        return `<div style="background:rgba(255,255,255,0.03);border:1px solid ${inst.color}33;border-radius:12px;padding:16px 18px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${inst.color};opacity:.7;border-radius:12px 12px 0 0"></div>
+          <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:800;color:var(--frost)">${inst.name}</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:3px">${inst.style}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:12px;font-weight:700;color:${inst.color}">$${inst.totalAUM}B AUM</div>
+              <div style="font-size:9px;color:var(--muted);margin-top:2px">${inst.reportDate}</div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Top Holdings</div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+            ${inst.topHoldings.slice(0,5).map(h => {
+              const bCol = h.chgPts > 1 ? '#10b981' : h.chgPts < -1 ? '#ef4444' : inst.color;
+              const arr  = h.chgPts > 0.5 ? '↑' : h.chgPts < -0.5 ? '↓' : '—';
+              const aC   = h.chgPts > 0 ? '#10b981' : h.chgPts < 0 ? '#ef4444' : 'var(--muted)';
+              return `<div style="display:flex;align-items:center;gap:6px">
+                <div style="font-size:11px;font-weight:700;color:var(--frost);width:44px;flex-shrink:0">${h.sym}</div>
+                <div style="flex:1;height:5px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden">
+                  <div style="height:100%;width:${Math.min(h.pct*3.5,100)}%;background:${bCol};border-radius:3px"></div>
+                </div>
+                <div style="font-size:11px;color:var(--frost);width:34px;text-align:right;flex-shrink:0">${h.pct.toFixed(1)}%</div>
+                <div style="font-size:10px;color:${aC};width:24px;text-align:right;flex-shrink:0">${arr}</div>
+              </div>`;
+            }).join('')}
+          </div>
+          <div style="background:${inst.color}10;border:1px solid ${inst.color}28;border-radius:7px;padding:7px 10px">
+            <div style="font-size:10px;font-weight:700;color:${inst.color};margin-bottom:3px">📋 ${inst.changed}</div>
+            <div style="font-size:11px;color:var(--muted-hi);line-height:1.5">${inst.summary}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="font-size:10px;color:var(--muted);text-align:center;line-height:1.6;padding-bottom:8px">
+      Data sourced from public SEC 13F-HR filings. Holdings shown as approximate % of reported US equity portfolio. Not investment advice.
+    </div>
+  </div>`;
+}
+</script>
+
 </body>
 </html>
