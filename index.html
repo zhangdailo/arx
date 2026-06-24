@@ -10228,6 +10228,74 @@ function removeLucidTyping() {
 // ── Sage Mode state ───────────────────────────────────────
 window._confuciusMode = false;
 
+// ── Browser-side 3-agent loop (GitHub Pages, no proxy needed) ────────
+async function runSageLoopBrowser(query, ctx, onStatus) {
+  const callPoll = async (system, userMsg) => {
+    const seed = Math.floor(Math.random() * 99999);
+    const url = 'https://text.pollinations.ai/' + encodeURIComponent(userMsg.slice(0, 900))
+      + '?model=openai&seed=' + seed
+      + '&system=' + encodeURIComponent(system.slice(0, 480));
+    const r = await fetch(url, { signal: AbortSignal.timeout(35000) });
+    if (!r.ok) throw new Error('Pollinations ' + r.status);
+    return r.text();
+  };
+
+  const parseJSON = raw => {
+    try {
+      const s = raw.indexOf('{'), e = raw.lastIndexOf('}') + 1;
+      if (s >= 0 && e > s) return JSON.parse(raw.slice(s, e));
+    } catch(e) {}
+    return null;
+  };
+
+  const CONF_SYS  = 'You are Confucius — ARX strategic planner. Output ONLY valid JSON, no commentary: {"objective":"one line","steps":["step1","step2","step3"],"data_sources":["Hyperliquid","KOL wallets","news"],"key_questions":["q1"]}. Max 4 steps.';
+  let   ZHANG_SYS = 'You are Zhang Fei — ARX execution engine. Access: Hyperliquid on-chain data, 5000 elite traders, KOL wallets, real-time news. Write a sharp market intelligence report. **Bold** key numbers. Use bullet points (- item). Include 1-2 links [text](url). Lead with the alpha signal. End with "Bottom line:". Max 300 words.';
+  const VAL_SYS   = 'You are Valerie — ARX quality verifier. Score strictly. Output ONLY valid JSON: {"scores":{"accuracy":0.0,"completeness":0.0,"actionability":0.0,"clarity":0.0},"overall":0.0,"critique":"specific failures","improved_prompt":"complete rewrite of the worker system prompt addressing the failures"}. Score 0.85+ only for genuinely excellent output.';
+
+  const MAX_ITER = 3, THRESHOLD = 0.85;
+
+  // ① Confucius plans (once)
+  onStatus('🧭 Confucius is planning...');
+  const planRaw = await callPoll(CONF_SYS,
+    `Query: ${query}` + (ctx ? `\n\nContext:\n${ctx.slice(0, 300)}` : ''));
+  const plan = parseJSON(planRaw) || {
+    objective: query,
+    steps: ['Gather signals', 'Analyze', 'Synthesize'],
+    data_sources: ['Hyperliquid', 'KOL wallets', 'news'],
+    key_questions: [query]
+  };
+
+  let finalOutput = '', history = [];
+
+  // ② Zhang Fei → Valerie loop
+  for (let i = 0; i < MAX_ITER; i++) {
+    onStatus(i === 0 ? '⚔  Zhang Fei is executing...' : `⚔  Zhang Fei refining (iter ${i + 1})...`);
+    const zhInput = `Query: ${query}\n\nPlan: ${JSON.stringify(plan)}\n\nContext: ${ctx ? ctx.slice(0, 300) : '(none)'}`;
+    finalOutput = await callPoll(ZHANG_SYS, zhInput);
+
+    onStatus('🔍 Valerie is evaluating...');
+    const evaluation = parseJSON(await callPoll(VAL_SYS,
+      `Query: ${query.slice(0, 200)}\n\nOutput:\n${finalOutput.slice(0, 700)}`));
+
+    const scores  = evaluation?.scores || {};
+    const nKeys   = Math.max(Object.keys(scores).length, 1);
+    const overall = evaluation?.overall ?? (Object.values(scores).reduce((a,b) => a+b, 0) / nKeys);
+    const score   = Math.min(Math.max(parseFloat(overall) || 0.7, 0), 1);
+
+    history.push({ iteration: i + 1, score, critique: evaluation?.critique || '' });
+
+    if (score >= THRESHOLD) {
+      return { output: finalOutput, iterations: i + 1, final_score: score, history, plan, passed: true };
+    }
+    if (i < MAX_ITER - 1 && evaluation?.improved_prompt?.length > 60) {
+      ZHANG_SYS = evaluation.improved_prompt;
+    }
+  }
+
+  const lastScore = history.at(-1)?.score || 0;
+  return { output: finalOutput, iterations: history.length, final_score: lastScore, history, plan, passed: false };
+}
+
 // ── Send message ──────────────────────────────────────────
 async function lucidSend() {
   const input   = document.getElementById('lucidInput');
@@ -10253,7 +10321,7 @@ async function lucidSend() {
       `- 🧭  *Confucius*  — plans the strategy\n` +
       `- ⚔   *Zhang Fei* — executes the work\n` +
       `- 🔍  *Valerie*    — scores and refines\n\n` +
-      `Quality threshold: **0.88** · Max iterations: **3**\n\n` +
+      `Quality threshold: **0.85** · Max iterations: **3**\n\n` +
       `Type \`/exit\` to return to standard mode.`,
       'ai'
     );
@@ -10269,12 +10337,13 @@ async function lucidSend() {
   }
 
   // ── Sage Mode: route all queries through the 3-agent loop ────────
-  if (window._confuciusMode && IS_LOCAL) {
+  // Works on GitHub Pages (browser loop) AND locally (proxy) ────────
+  if (window._confuciusMode) {
     input.value = '';
     appendLucidMsg(rawText, 'user');
     lucidHistory.push({ role: 'user', content: rawText });
 
-    // Animated loader that cycles through agent names
+    // Loader bubble — status text updates in real-time as each agent fires
     const sageContainer = document.getElementById('lucidMessages');
     const sageWrapper = document.createElement('div');
     sageWrapper.className = 'lucid-msg lucid-msg-ai';
@@ -10286,40 +10355,52 @@ async function lucidSend() {
     sageContainer.appendChild(sageWrapper);
     sageContainer.scrollTop = sageContainer.scrollHeight;
 
-    const agentCycle = [
-      '🧭 Confucius is planning...',
-      '⚔  Zhang Fei is executing...',
-      '🔍 Valerie is evaluating...',
-      '⚔  Zhang Fei refining (iter 2)...',
-      '🔍 Valerie checking again...',
-      '⚔  Zhang Fei final pass...',
-    ];
-    let agentIdx = 0;
-    const agentTimer = setInterval(() => {
-      agentIdx = Math.min(agentIdx + 1, agentCycle.length - 1);
+    const updateSageStatus = msg => {
       const el = document.getElementById('sageAgentStatus');
-      if (el) el.textContent = agentCycle[agentIdx];
-    }, 9000);
+      if (el) el.textContent = msg;
+    };
 
     const ctx = await buildLucidContext();
+    let _agentTimer = null;
 
     try {
-      const resp = await fetch('http://localhost:3001/agents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: rawText, context: ctx, max_iterations: 3 }),
-        signal: AbortSignal.timeout(120000)
-      });
+      let result;
 
-      clearInterval(agentTimer);
-      document.getElementById('sageTyping')?.remove();
+      if (IS_LOCAL) {
+        // ── Local: use the proxy (xAI/Groq — richer models) ──────────
+        // Proxy is opaque so we cycle status on a timer
+        const agentCycle = [
+          '🧭 Confucius is planning...',
+          '⚔  Zhang Fei is executing...',
+          '🔍 Valerie is evaluating...',
+          '⚔  Zhang Fei refining (iter 2)...',
+          '🔍 Valerie checking again...',
+          '⚔  Zhang Fei final pass...',
+        ];
+        let agentIdx = 0;
+        _agentTimer = setInterval(() => {
+          agentIdx = Math.min(agentIdx + 1, agentCycle.length - 1);
+          updateSageStatus(agentCycle[agentIdx]);
+        }, 9000);
 
-      if (!resp.ok) {
-        appendLucidMsg('⚠ Agent loop failed — is arx_kol_proxy.py running?', 'ai');
-        return;
+        const resp = await fetch('http://localhost:3001/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: rawText, context: ctx, max_iterations: 3 }),
+          signal: AbortSignal.timeout(120000)
+        });
+        clearInterval(_agentTimer); _agentTimer = null;
+        if (!resp.ok) throw new Error('Agent proxy error ' + resp.status + ' — is arx_kol_proxy.py running?');
+        result = await resp.json();
+
+      } else {
+        // ── GitHub Pages: run the full loop in the browser ────────────
+        // runSageLoopBrowser calls Pollinations GET for each agent step
+        // and fires updateSageStatus live so the user sees real progress
+        result = await runSageLoopBrowser(rawText, ctx, updateSageStatus);
       }
 
-      const result = await resp.json();
+      document.getElementById('sageTyping')?.remove();
 
       // Renderer with amber/gold palette for Sage Mode
       const renderMdSage = t => {
@@ -10363,7 +10444,7 @@ async function lucidSend() {
       lucidHistory.push({ role: 'assistant', content: result.output || '' });
 
     } catch(err) {
-      clearInterval(agentTimer);
+      if (_agentTimer) clearInterval(_agentTimer);
       document.getElementById('sageTyping')?.remove();
       appendLucidMsg('⚠ ' + err.message, 'ai');
     }
