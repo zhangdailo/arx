@@ -2657,8 +2657,9 @@
       </div>
 
       <!-- Messages area -->
-      <div id="lucidMessages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;
-           padding-right:6px;padding-bottom:16px;scroll-behavior:smooth">
+      <div id="lucidMessages" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;
+           padding:16px;border-radius:12px;background:#fafafa;border:1px solid rgba(168,85,247,.12);
+           margin-bottom:4px;scroll-behavior:smooth">
         <!-- Welcome message -->
         <div class="lucid-msg lucid-msg-ai" id="lucidWelcome">
           <div class="lucid-bubble">
@@ -2672,10 +2673,10 @@
         <div style="display:flex;gap:10px;align-items:flex-end">
           <textarea id="lucidInput" rows="2"
             placeholder="Ask Superhuman AI anything — trade ideas, market structure, ARX data..."
-            style="flex:1;background:rgba(168,85,247,.06);border:1px solid rgba(168,85,247,.25);
-                   color:#e0aaff;padding:10px 14px;font-family:'Courier New',monospace;font-size:12px;
+            style="flex:1;background:#fff;border:1px solid rgba(168,85,247,.3);
+                   color:#1a1228;padding:10px 14px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;
                    resize:none;line-height:1.5;outline:none;
-                   border-radius:2px;letter-spacing:.03em"
+                   border-radius:10px;letter-spacing:.01em"
             onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();lucidSend()}"
           ></textarea>
           <button onclick="lucidSend()"
@@ -2704,21 +2705,28 @@
 .lucid-msg-ai  { justify-content:flex-start; }
 .lucid-msg-user{ justify-content:flex-end; }
 .lucid-bubble {
-  max-width:82%;padding:12px 16px;font-size:12px;line-height:1.75;
-  font-family:'Courier New',monospace;letter-spacing:.02em;
+  max-width:86%;padding:12px 16px;font-size:13px;line-height:1.85;
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  letter-spacing:.01em;
 }
 .lucid-msg-ai .lucid-bubble {
-  background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);
-  color:#d4b8f5;border-left:2px solid rgba(168,85,247,.5);
+  background:#ffffff;border:1px solid #ede8fb;
+  color:#1a1228;border-left:3px solid #c084fc;
+  border-radius:0 12px 12px 12px;
+  box-shadow:0 2px 8px rgba(168,85,247,.08);
 }
 .lucid-msg-user .lucid-bubble {
-  background:rgba(124,58,237,.15);border:1px solid rgba(124,58,237,.3);
-  color:#e0aaff;border-right:2px solid rgba(124,58,237,.6);
+  background:linear-gradient(135deg,#7c3aed,#9333ea);
+  border:none;color:#fff;
+  border-radius:12px 0 12px 12px;
+  box-shadow:0 2px 10px rgba(124,58,237,.3);
   text-align:right;
 }
-.lucid-typing { display:inline-flex;gap:4px;align-items:center;padding:4px 0 }
+.lucid-msg-ai .lucid-bubble a { color:#7c3aed;text-decoration:underline;font-weight:500; }
+.lucid-msg-ai .lucid-bubble a:hover { color:#9333ea; }
+.lucid-typing { display:inline-flex;gap:5px;align-items:center;padding:4px 0 }
 .lucid-typing span {
-  width:5px;height:5px;border-radius:50%;background:rgba(168,85,247,.6);
+  width:7px;height:7px;border-radius:50%;background:#c084fc;
   animation:lucidDot .9s ease-in-out infinite;
 }
 .lucid-typing span:nth-child(2){animation-delay:.2s}
@@ -10160,13 +10168,15 @@ function appendLucidMsg(text, role, scroll = true) {
   const bubble = document.createElement('div');
   bubble.className = 'lucid-bubble';
   if (role === 'ai') {
-    // Render markdown-ish: bold **text**, newlines
-    bubble.innerHTML = text
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
-      .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
-      .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
-      .replace(/\n/g,'<br>');
+    let s = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1 ↗</a>');
+    s = s.replace(/^#{1,3} (.+)$/gm,'<b style="color:#7c3aed;font-size:13px;display:block;margin:8px 0 2px;letter-spacing:.03em">$1</b>');
+    s = s.replace(/\*\*(.+?)\*\*/g,'<strong style="color:#7c3aed">$1</strong>');
+    s = s.replace(/\*(.+?)\*/g,'<em style="color:#9333ea">$1</em>');
+    s = s.replace(/`([^`]+)`/g,'<code style="background:#f3eeff;padding:1px 6px;border-radius:3px;font-size:11px;color:#7c3aed;font-family:monospace">$1</code>');
+    s = s.replace(/^[-•] (.+)$/gm,'<span style="display:block;padding-left:14px;margin:2px 0">▸ $1</span>');
+    s = s.replace(/\n/g,'<br>');
+    bubble.innerHTML = s;
   } else {
     bubble.textContent = text;
   }
@@ -10291,11 +10301,17 @@ async function lucidSend() {
       if (!gr.ok) { const e = await gr.json().catch(()=>{}); throw new Error(e?.error?.message || 'Groq HTTP ' + gr.status); }
       const gd = await gr.json();
       const reply = gd.choices?.[0]?.message?.content || '(no response)';
-      const renderMdG = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
-        .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
-        .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
-        .replace(/\n/g,'<br>');
+      const renderMdG = t => {
+        let s = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1 ↗</a>');
+        s = s.replace(/^#{1,3} (.+)$/gm,'<b style="color:#7c3aed;font-size:13px;display:block;margin:8px 0 2px;letter-spacing:.03em">$1</b>');
+        s = s.replace(/\*\*(.+?)\*\*/g,'<strong style="color:#7c3aed">$1</strong>');
+        s = s.replace(/\*(.+?)\*/g,'<em style="color:#9333ea">$1</em>');
+        s = s.replace(/`([^`]+)`/g,'<code style="background:#f3eeff;padding:1px 6px;border-radius:3px;font-size:11px;color:#7c3aed;font-family:monospace">$1</code>');
+        s = s.replace(/^[-•] (.+)$/gm,'<span style="display:block;padding-left:14px;margin:2px 0">▸ $1</span>');
+        s = s.replace(/\n/g,'<br>');
+        return s;
+      };
       const container = document.getElementById('lucidMessages');
       const wrapper = document.createElement('div'); wrapper.className = 'lucid-msg lucid-msg-ai';
       const bubble = document.createElement('div'); bubble.className = 'lucid-bubble';
@@ -10308,14 +10324,27 @@ async function lucidSend() {
 
   // ── Pollinations GET path (GitHub Pages, no key needed) ──────────────
   if (usePollinationsDirect) {
-    const renderMdP = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
-      .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
-      .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
-      .replace(/\n/g,'<br>');
+    const renderMdP = t => {
+      let s = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      // Clickable links [text](url)
+      s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1 ↗</a>');
+      // Headers ## / #
+      s = s.replace(/^#{1,3} (.+)$/gm,'<b style="color:#7c3aed;font-size:13px;display:block;margin:8px 0 2px;letter-spacing:.03em">$1</b>');
+      // Bold **text**
+      s = s.replace(/\*\*(.+?)\*\*/g,'<strong style="color:#7c3aed">$1</strong>');
+      // Italic *text*
+      s = s.replace(/\*(.+?)\*/g,'<em style="color:#9333ea">$1</em>');
+      // Code `text`
+      s = s.replace(/`([^`]+)`/g,'<code style="background:#f3eeff;padding:1px 6px;border-radius:3px;font-size:11px;color:#7c3aed;font-family:monospace">$1</code>');
+      // Bullet points - item / • item
+      s = s.replace(/^[-•] (.+)$/gm,'<span style="display:block;padding-left:14px;margin:2px 0">▸ $1</span>');
+      // Newlines
+      s = s.replace(/\n/g,'<br>');
+      return s;
+    };
     try {
       const seed = Math.floor(Math.random() * 99999);
-      const sysP = 'You are ARX Superhuman AI, a crypto market intelligence assistant with access to Hyperliquid on-chain data, 5000 elite traders, KOL wallets, and real-time news signals. Be concise and insightful.';
+      const sysP = 'You are ARX Superhuman AI — sharp, fun, and data-driven. Use emojis naturally 🔥📊💰🐋⚡. Format key numbers in **bold**. Use bullet points (- item). Add 1-2 relevant links [text](url) when helpful. Lead with the alpha, back with data. You have: Hyperliquid on-chain data, 5000 elite traders, KOL wallets, real-time news.';
       const ctxSnip = ctx ? ctx.slice(0, 600) : '';
       const fullQ = rawText + (ctxSnip ? '\n\nContext:\n' + ctxSnip : '');
       const pollUrl = 'https://text.pollinations.ai/' + encodeURIComponent(fullQ.slice(0, 1000))
