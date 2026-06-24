@@ -10309,10 +10309,6 @@ async function lucidSend() {
       appendLucidMsg('⬡ Sage Mode is already active, scholar.', 'ai');
       return;
     }
-    if (!IS_LOCAL) {
-      appendLucidMsg('⬡ Sage Mode requires the local proxy. Run `arx_kol_proxy.py` first, then try again.', 'ai');
-      return;
-    }
     window._confuciusMode = true;
     document.getElementById('sageIndicator').style.display = '';
     appendLucidMsg(
