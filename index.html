@@ -10306,7 +10306,7 @@ async function lucidSend() {
     return;
   }
 
-  // ── Pollinations free path (GitHub Pages, no key) ─────────────────────
+  // ── Pollinations GET path (GitHub Pages, no key needed) ──────────────
   if (usePollinationsDirect) {
     const renderMdP = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
@@ -10314,24 +10314,20 @@ async function lucidSend() {
       .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
       .replace(/\n/g,'<br>');
     try {
-      const pr = await fetch('https://text.pollinations.ai/openai', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({
-          model: 'openai-large', stream: false,
-          messages: [{role:'system', content: buildLucidSystem()}, ...messagesWithCtx],
-          max_tokens: 2000
-        }),
-        signal: AbortSignal.timeout(30000)
-      });
+      const seed = Math.floor(Math.random() * 99999);
+      const sysP = 'You are ARX Superhuman AI, a crypto market intelligence assistant with access to Hyperliquid on-chain data, 5000 elite traders, KOL wallets, and real-time news signals. Be concise and insightful.';
+      // Append a short context snippet to the question (GET API has URL length limits)
+      const ctxSnip = ctx ? ctx.slice(0, 600) : '';
+      const fullQ = rawText + (ctxSnip ? '\n\nContext:\n' + ctxSnip : '');
+      const pollUrl = 'https://text.pollinations.ai/' + encodeURIComponent(fullQ.slice(0, 1000))
+        + '?model=openai&seed=' + seed + '&system=' + encodeURIComponent(sysP);
+      const pr = await fetch(pollUrl, { signal: AbortSignal.timeout(30000) });
       removeLucidTyping();
       if (!pr.ok) {
-        removeLucidTyping();
         appendLucidMsg('⚠ AI service temporarily unavailable. Please try again in a moment.', 'error');
         return;
       }
-      const pd = await pr.json();
-      const reply = pd.choices?.[0]?.message?.content || '(no response)';
+      const reply = await pr.text();
       const container = document.getElementById('lucidMessages');
       const wrapper = document.createElement('div'); wrapper.className = 'lucid-msg lucid-msg-ai';
       const bubble  = document.createElement('div'); bubble.className  = 'lucid-bubble';
