@@ -10303,6 +10303,60 @@ async function lucidSend() {
     .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
     .replace(/\n/g,'<br>');
 
+  // ── Probe proxy; if missing /lucid, fall back to Groq direct ──────────
+  let useGroqDirect = false;
+  if (IS_LOCAL) {
+    try {
+      const probe = await fetch('http://localhost:3001/lucid', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({messages:[{role:'user',content:'ping'}], max_tokens:1}),
+        signal: AbortSignal.timeout(3000)
+      });
+      if (probe.status === 404) useGroqDirect = true;
+    } catch(e) { useGroqDirect = true; }
+  }
+
+  // ── Groq direct path (no proxy needed) ────────────────────────────────
+  if (useGroqDirect) {
+    try {
+      const keyRes = await fetch('/arx_keys.js', {signal: AbortSignal.timeout(2000)});
+      if (keyRes.ok) {
+        const js = await keyRes.text();
+        const match = js.match(/window\._ARX_GROQ_KEY\s*=\s*['"]([^'"]+)['"]/);
+        if (match) window._ARX_GROQ_KEY = match[1];
+      }
+    } catch(e) {}
+    const groqKey = window._ARX_GROQ_KEY;
+    if (!groqKey) { appendLucidMsg('⚠ Groq key not found. Run: python3 ~/Documents/DailoOS/arx_kol_proxy.py', 'error'); removeLucidTyping(); return; }
+    try {
+      const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','Authorization':'Bearer ' + groqKey},
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile', max_tokens: 2000, temperature: 0.7,
+          messages: [{role:'system', content: buildLucidSystem()}, ...messagesWithCtx]
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+      removeLucidTyping();
+      if (!gr.ok) { const e = await gr.json().catch(()=>{}); throw new Error(e?.error?.message || 'Groq HTTP ' + gr.status); }
+      const gd = await gr.json();
+      const reply = gd.choices?.[0]?.message?.content || '(no response)';
+      const renderMdG = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
+        .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
+        .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
+        .replace(/\n/g,'<br>');
+      const container = document.getElementById('lucidMessages');
+      const wrapper = document.createElement('div'); wrapper.className = 'lucid-msg lucid-msg-ai';
+      const bubble = document.createElement('div'); bubble.className = 'lucid-bubble';
+      bubble.innerHTML = renderMdG(reply); wrapper.appendChild(bubble); container.appendChild(wrapper);
+      container.scrollTop = container.scrollHeight;
+      lucidHistory.push({role:'assistant', content: reply});
+    } catch(err) { removeLucidTyping(); appendLucidMsg('⚠ ' + err.message, 'error'); }
+    return;
+  }
+
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
