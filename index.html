@@ -10097,7 +10097,7 @@ function initLucid() {
   } catch(e) {}
 
   // Status
-  updateLucidStatus(IS_LOCAL || !!sessionStorage.getItem(LUCID_SS_KEY));
+  updateLucidStatus(true); // always ready — proxy (local) or Pollinations (live)
 
   // ── Bootstrap all ARX data sources in background ──────────────────
   // Each fires silently — Lucid context will be full by the time user sends first message
@@ -10259,22 +10259,28 @@ async function lucidSend() {
   if (!rawText) return;
 
   // ── Resolve endpoint + headers ──────────────────────────────────────
-  // On localhost → proxy handles the key (no modal ever)
-  // On GitHub Pages → direct Anthropic API (needs key from sessionStorage)
+  // On localhost → proxy (Groq direct fallback if proxy missing /lucid)
+  // On GitHub Pages → Pollinations free AI (no key needed); Anthropic key optional upgrade
   let endpoint, reqHeaders;
+  let usePollinationsDirect = false;
   if (IS_LOCAL) {
     endpoint   = 'http://localhost:3001/lucid';
     reqHeaders = { 'Content-Type': 'application/json' };
   } else {
     const apiKey = sessionStorage.getItem(LUCID_SS_KEY);
-    if (!apiKey) { lucidShowKeyModal(); return; }
-    endpoint   = 'https://api.anthropic.com/v1/messages';
-    reqHeaders = {
-      'Content-Type':      'application/json',
-      'x-api-key':         apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-beta':    'messages-2023-12-15',
-    };
+    if (apiKey) {
+      // User has voluntarily set an Anthropic key — use it for best quality
+      endpoint   = 'https://api.anthropic.com/v1/messages';
+      reqHeaders = {
+        'Content-Type':      'application/json',
+        'x-api-key':         apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta':    'messages-2023-12-15',
+      };
+    } else {
+      // No key — use Pollinations free AI (GPT-4o class, no signup needed)
+      usePollinationsDirect = true;
+    }
   }
 
   input.value = '';
@@ -10351,6 +10357,44 @@ async function lucidSend() {
       const wrapper = document.createElement('div'); wrapper.className = 'lucid-msg lucid-msg-ai';
       const bubble = document.createElement('div'); bubble.className = 'lucid-bubble';
       bubble.innerHTML = renderMdG(reply); wrapper.appendChild(bubble); container.appendChild(wrapper);
+      container.scrollTop = container.scrollHeight;
+      lucidHistory.push({role:'assistant', content: reply});
+    } catch(err) { removeLucidTyping(); appendLucidMsg('⚠ ' + err.message, 'error'); }
+    return;
+  }
+
+  // ── Pollinations free path (GitHub Pages, no key) ─────────────────────
+  if (usePollinationsDirect) {
+    const renderMdP = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.*?)\*\*/g,'<strong style="color:#c084fc">$1</strong>')
+      .replace(/\*(.*?)\*/g,'<em style="color:#a78bfa">$1</em>')
+      .replace(/`([^`]+)`/g,'<code style="background:rgba(168,85,247,.12);padding:1px 5px;border-radius:2px;font-size:11px">$1</code>')
+      .replace(/\n/g,'<br>');
+    try {
+      const pr = await fetch('https://text.pollinations.ai/openai', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model: 'openai-large', stream: false,
+          messages: [{role:'system', content: buildLucidSystem()}, ...messagesWithCtx],
+          max_tokens: 2000
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+      removeLucidTyping();
+      if (!pr.ok) {
+        // Pollinations blocked — ask user for API key as fallback
+        lucidShowKeyModal();
+        lucidHistory.pop(); // remove the user message we already pushed
+        input.value = rawText;
+        return;
+      }
+      const pd = await pr.json();
+      const reply = pd.choices?.[0]?.message?.content || '(no response)';
+      const container = document.getElementById('lucidMessages');
+      const wrapper = document.createElement('div'); wrapper.className = 'lucid-msg lucid-msg-ai';
+      const bubble  = document.createElement('div'); bubble.className  = 'lucid-bubble';
+      bubble.innerHTML = renderMdP(reply); wrapper.appendChild(bubble); container.appendChild(wrapper);
       container.scrollTop = container.scrollHeight;
       lucidHistory.push({role:'assistant', content: reply});
     } catch(err) { removeLucidTyping(); appendLucidMsg('⚠ ' + err.message, 'error'); }
