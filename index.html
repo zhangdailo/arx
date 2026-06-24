@@ -10230,14 +10230,21 @@ window._confuciusMode = false;
 
 // ── Browser-side 3-agent loop (GitHub Pages, no proxy needed) ────────
 async function runSageLoopBrowser(query, ctx, onStatus) {
-  const callPoll = async (system, userMsg) => {
+  const callPoll = async (system, userMsg, retries = 1) => {
     const seed = Math.floor(Math.random() * 99999);
     const url = 'https://text.pollinations.ai/' + encodeURIComponent(userMsg.slice(0, 900))
       + '?model=openai&seed=' + seed
       + '&system=' + encodeURIComponent(system.slice(0, 480));
-    const r = await fetch(url, { signal: AbortSignal.timeout(35000) });
-    if (!r.ok) throw new Error('Pollinations ' + r.status);
-    return r.text();
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(60000) });
+        if (!r.ok) throw new Error('Pollinations ' + r.status);
+        return await r.text();
+      } catch(e) {
+        if (attempt === retries) throw e;
+        await new Promise(res => setTimeout(res, 2000));
+      }
+    }
   };
 
   const parseJSON = raw => {
@@ -10255,7 +10262,7 @@ async function runSageLoopBrowser(query, ctx, onStatus) {
   const MAX_ITER = 3, THRESHOLD = 0.85;
 
   // ① Confucius plans (once)
-  onStatus('🧭 Confucius is planning...');
+  onStatus('🧠 Confucius is planning...');
   const planRaw = await callPoll(CONF_SYS,
     `Query: ${query}` + (ctx ? `\n\nContext:\n${ctx.slice(0, 300)}` : ''));
   const plan = parseJSON(planRaw) || {
@@ -10269,11 +10276,11 @@ async function runSageLoopBrowser(query, ctx, onStatus) {
 
   // ② Zhang Fei → Valerie loop
   for (let i = 0; i < MAX_ITER; i++) {
-    onStatus(i === 0 ? '⚔  Zhang Fei is executing...' : `⚔  Zhang Fei refining (iter ${i + 1})...`);
+    onStatus(i === 0 ? '⛑️ Zhang Fei is executing...' : `⛑️ Zhang Fei refining (iter ${i + 1})...`);
     const zhInput = `Query: ${query}\n\nPlan: ${JSON.stringify(plan)}\n\nContext: ${ctx ? ctx.slice(0, 300) : '(none)'}`;
     finalOutput = await callPoll(ZHANG_SYS, zhInput);
 
-    onStatus('🔍 Valerie is evaluating...');
+    onStatus('🕵️ Valerie is evaluating...');
     const evaluation = parseJSON(await callPoll(VAL_SYS,
       `Query: ${query.slice(0, 200)}\n\nOutput:\n${finalOutput.slice(0, 700)}`));
 
@@ -10312,11 +10319,11 @@ async function lucidSend() {
     window._confuciusMode = true;
     document.getElementById('sageIndicator').style.display = '';
     appendLucidMsg(
-      `⬡  **S A G E  M O D E  U N L O C K E D**\n\n` +
+      `⬡  **R E C U R S I V E  M O D E  U N L O C K E D**  {SECRET}\n\n` +
       `Three minds now serve your query:\n` +
-      `- 🧭  *Confucius*  — plans the strategy\n` +
-      `- ⚔   *Zhang Fei* — executes the work\n` +
-      `- 🔍  *Valerie*    — scores and refines\n\n` +
+      `- 🧠  *Confucius*  — plans the strategy\n` +
+      `- ⛑️  *Zhang Fei* — executes the work\n` +
+      `- 🕵️  *Valerie*    — scores and refines\n\n` +
       `Quality threshold: **0.85** · Max iterations: **3**\n\n` +
       `Type \`/exit\` to return to standard mode.`,
       'ai'
@@ -10345,7 +10352,7 @@ async function lucidSend() {
     sageWrapper.className = 'lucid-msg lucid-msg-ai';
     sageWrapper.id = 'sageTyping';
     sageWrapper.innerHTML = `<div class="lucid-bubble sage-loading-bubble">
-      <span id="sageAgentStatus">🧭 Confucius is planning...</span>
+      <span id="sageAgentStatus">🧠 Confucius is planning...</span>
       <div class="lucid-typing"><span></span><span></span><span></span></div>
     </div>`;
     sageContainer.appendChild(sageWrapper);
@@ -10366,12 +10373,12 @@ async function lucidSend() {
         // ── Local: use the proxy (xAI/Groq — richer models) ──────────
         // Proxy is opaque so we cycle status on a timer
         const agentCycle = [
-          '🧭 Confucius is planning...',
-          '⚔  Zhang Fei is executing...',
-          '🔍 Valerie is evaluating...',
-          '⚔  Zhang Fei refining (iter 2)...',
-          '🔍 Valerie checking again...',
-          '⚔  Zhang Fei final pass...',
+          '🧠 Confucius is planning...',
+          '⛑️  Zhang Fei is executing...',
+          '🕵️  Valerie is evaluating...',
+          '⛑️  Zhang Fei refining (iter 2)...',
+          '🕵️  Valerie checking again...',
+          '⛑️  Zhang Fei final pass...',
         ];
         let agentIdx = 0;
         _agentTimer = setInterval(() => {
@@ -10431,7 +10438,7 @@ async function lucidSend() {
           </span>
           <span style="color:#92400e;font-size:10px;letter-spacing:.05em">${iters} iteration${iters !== 1 ? 's' : ''}</span>
           ${histLines ? `<span style="color:#b45309;font-size:10px;opacity:.7">${histLines}</span>` : ''}
-          <span style="color:#d97706;font-size:10px;letter-spacing:.06em;margin-left:auto">⬡ Confucius · Zhang Fei · Valerie</span>
+          <span style="color:#d97706;font-size:10px;letter-spacing:.06em;margin-left:auto">🧠 Confucius · ⛑️ Zhang Fei · 🕵️ Valerie</span>
         </div>`;
 
       msgWrapper.appendChild(msgBubble);
