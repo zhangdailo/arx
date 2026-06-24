@@ -2648,6 +2648,11 @@
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
           <div id="lucidStatus" style="font-size:9px;letter-spacing:.15em;color:rgba(168,85,247,.4)">● OFFLINE</div>
 
+          <div id="sageIndicator" style="display:none;font-size:9px;letter-spacing:.14em;font-weight:700;
+               color:#92400e;background:#fef3c7;padding:2px 10px;border-radius:20px;border:1px solid #fde68a">
+            ⬡ SAGE MODE
+          </div>
+
           <button onclick="lucidClearHistory()"
                   style="font-size:9px;letter-spacing:.15em;padding:3px 10px;cursor:pointer;
                          background:transparent;border:1px solid rgba(168,85,247,.2);color:rgba(168,85,247,.4)">
@@ -2724,6 +2729,21 @@
 }
 .lucid-msg-ai .lucid-bubble a { color:#7c3aed;text-decoration:underline;font-weight:500; }
 .lucid-msg-ai .lucid-bubble a:hover { color:#9333ea; }
+/* ── Sage Mode (Confucius easter egg) ─────────────────────────── */
+.sage-result-bubble {
+  background:#fffbeb !important;border-left-color:#f59e0b !important;border-color:#fde68a !important;
+}
+.sage-loading-bubble {
+  background:#fffbeb !important;border-left-color:#f59e0b !important;border-color:#fde68a !important;
+  color:#92400e !important;display:flex;align-items:center;gap:8px;
+}
+.sage-meta {
+  margin-top:10px;padding-top:8px;border-top:1px solid #fde68a;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+}
+.sage-score-pill { font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 9px;border-radius:20px; }
+.sage-pass { background:#d1fae5;color:#065f46; }
+.sage-warn { background:#fef3c7;color:#92400e; }
 .lucid-typing { display:inline-flex;gap:5px;align-items:center;padding:4px 0 }
 .lucid-typing span {
   width:7px;height:7px;border-radius:50%;background:#c084fc;
@@ -10205,11 +10225,151 @@ function removeLucidTyping() {
   if (el) el.remove();
 }
 
+// ── Sage Mode state ───────────────────────────────────────
+window._confuciusMode = false;
+
 // ── Send message ──────────────────────────────────────────
 async function lucidSend() {
   const input   = document.getElementById('lucidInput');
   const rawText = input?.value?.trim();
   if (!rawText) return;
+
+  // ── Easter egg: /confucius unlocks 3-agent Sage Mode ─────────────
+  if (rawText === '/confucius') {
+    input.value = '';
+    if (window._confuciusMode) {
+      appendLucidMsg('⬡ Sage Mode is already active, scholar.', 'ai');
+      return;
+    }
+    if (!IS_LOCAL) {
+      appendLucidMsg('⬡ Sage Mode requires the local proxy. Run `arx_kol_proxy.py` first, then try again.', 'ai');
+      return;
+    }
+    window._confuciusMode = true;
+    document.getElementById('sageIndicator').style.display = '';
+    appendLucidMsg(
+      `⬡  **S A G E  M O D E  U N L O C K E D**\n\n` +
+      `Three minds now serve your query:\n` +
+      `- 🧭  *Confucius*  — plans the strategy\n` +
+      `- ⚔   *Zhang Fei* — executes the work\n` +
+      `- 🔍  *Valerie*    — scores and refines\n\n` +
+      `Quality threshold: **0.88** · Max iterations: **3**\n\n` +
+      `Type \`/exit\` to return to standard mode.`,
+      'ai'
+    );
+    return;
+  }
+
+  if (rawText === '/exit' || rawText === '/normal') {
+    input.value = '';
+    window._confuciusMode = false;
+    document.getElementById('sageIndicator').style.display = 'none';
+    appendLucidMsg('⬡ Returned to standard mode.', 'ai');
+    return;
+  }
+
+  // ── Sage Mode: route all queries through the 3-agent loop ────────
+  if (window._confuciusMode && IS_LOCAL) {
+    input.value = '';
+    appendLucidMsg(rawText, 'user');
+    lucidHistory.push({ role: 'user', content: rawText });
+
+    // Animated loader that cycles through agent names
+    const sageContainer = document.getElementById('lucidMessages');
+    const sageWrapper = document.createElement('div');
+    sageWrapper.className = 'lucid-msg lucid-msg-ai';
+    sageWrapper.id = 'sageTyping';
+    sageWrapper.innerHTML = `<div class="lucid-bubble sage-loading-bubble">
+      <span id="sageAgentStatus">🧭 Confucius is planning...</span>
+      <div class="lucid-typing"><span></span><span></span><span></span></div>
+    </div>`;
+    sageContainer.appendChild(sageWrapper);
+    sageContainer.scrollTop = sageContainer.scrollHeight;
+
+    const agentCycle = [
+      '🧭 Confucius is planning...',
+      '⚔  Zhang Fei is executing...',
+      '🔍 Valerie is evaluating...',
+      '⚔  Zhang Fei refining (iter 2)...',
+      '🔍 Valerie checking again...',
+      '⚔  Zhang Fei final pass...',
+    ];
+    let agentIdx = 0;
+    const agentTimer = setInterval(() => {
+      agentIdx = Math.min(agentIdx + 1, agentCycle.length - 1);
+      const el = document.getElementById('sageAgentStatus');
+      if (el) el.textContent = agentCycle[agentIdx];
+    }, 9000);
+
+    const ctx = await buildLucidContext();
+
+    try {
+      const resp = await fetch('http://localhost:3001/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: rawText, context: ctx, max_iterations: 3 }),
+        signal: AbortSignal.timeout(120000)
+      });
+
+      clearInterval(agentTimer);
+      document.getElementById('sageTyping')?.remove();
+
+      if (!resp.ok) {
+        appendLucidMsg('⚠ Agent loop failed — is arx_kol_proxy.py running?', 'ai');
+        return;
+      }
+
+      const result = await resp.json();
+
+      // Renderer with amber/gold palette for Sage Mode
+      const renderMdSage = t => {
+        let s = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g,'<a href="$2" target="_blank" rel="noopener" style="color:#b45309;text-decoration:underline">$1 ↗</a>');
+        s = s.replace(/^#{1,3} (.+)$/gm,'<b style="color:#92400e;font-size:13px;display:block;margin:8px 0 2px;letter-spacing:.03em">$1</b>');
+        s = s.replace(/\*\*(.+?)\*\*/g,'<strong style="color:#92400e">$1</strong>');
+        s = s.replace(/\*(.+?)\*/g,'<em style="color:#b45309">$1</em>');
+        s = s.replace(/`([^`]+)`/g,'<code style="background:#fef3c7;padding:1px 6px;border-radius:3px;font-size:11px;color:#92400e;font-family:monospace">$1</code>');
+        s = s.replace(/^[-•] (.+)$/gm,'<span style="display:block;padding-left:14px;margin:2px 0">▸ $1</span>');
+        s = s.replace(/\n/g,'<br>');
+        return s;
+      };
+
+      const msgWrapper = document.createElement('div');
+      msgWrapper.className = 'lucid-msg lucid-msg-ai';
+      const msgBubble = document.createElement('div');
+      msgBubble.className = 'lucid-bubble sage-result-bubble';
+      msgBubble.innerHTML = renderMdSage(result.output || '(no output)');
+
+      // Score + metadata footer
+      const score  = result.final_score || 0;
+      const passed = result.passed;
+      const iters  = result.iterations || 1;
+      const histLines = (result.history || [])
+        .map(h => `iter ${h.iteration}: ${(h.score||0).toFixed(2)}`)
+        .join(' → ');
+      msgBubble.innerHTML += `
+        <div class="sage-meta">
+          <span class="sage-score-pill ${passed ? 'sage-pass' : 'sage-warn'}">
+            ${passed ? '✓ passed' : '~ below threshold'} · ${score.toFixed(2)}
+          </span>
+          <span style="color:#92400e;font-size:10px;letter-spacing:.05em">${iters} iteration${iters !== 1 ? 's' : ''}</span>
+          ${histLines ? `<span style="color:#b45309;font-size:10px;opacity:.7">${histLines}</span>` : ''}
+          <span style="color:#d97706;font-size:10px;letter-spacing:.06em;margin-left:auto">⬡ Confucius · Zhang Fei · Valerie</span>
+        </div>`;
+
+      msgWrapper.appendChild(msgBubble);
+      sageContainer.appendChild(msgWrapper);
+      sageContainer.scrollTop = sageContainer.scrollHeight;
+      lucidHistory.push({ role: 'assistant', content: result.output || '' });
+
+    } catch(err) {
+      clearInterval(agentTimer);
+      document.getElementById('sageTyping')?.remove();
+      appendLucidMsg('⚠ ' + err.message, 'ai');
+    }
+    return;
+  }
+  // ─────────────────────────────────────────────────────────────────
 
   // ── Resolve endpoint + headers ──────────────────────────────────────
   // On localhost → proxy (Groq direct fallback if proxy missing /lucid)
