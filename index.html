@@ -8222,22 +8222,32 @@ function renderSmartCohort() {
   const smart = _wltDiscover.cohorts?.find(c => c.key === 'smart');
   if (!smart) return;
   const s = smart.summary;
-  const longPct  = s.long_share_pct?.toFixed(1) || '—';
-  const shortPct = (100 - s.long_share_pct)?.toFixed(1) || '—';
-  const gross    = (parseFloat(s.gross_notional_usd)/1e6).toFixed(0);
-  const net      = parseFloat(s.net_notional_usd);
+  const hasData  = s.long_share_pct != null && s.gross_notional_usd > 0;
+  const longPct  = hasData ? parseFloat(s.long_share_pct).toFixed(1) : null;
+  const shortPct = hasData ? (100 - parseFloat(s.long_share_pct)).toFixed(1) : null;
+  const gross    = (parseFloat(s.gross_notional_usd||0)/1e6).toFixed(0);
+  const net      = parseFloat(s.net_notional_usd||0);
 
   const topLongs  = (s.top_long_markets||[]).slice(0,4);
   const topShorts = (s.top_short_markets||[]).slice(0,4);
 
+  const barHtml = hasData
+    ? `<div class="long-short-bar" style="flex:1"><div class="ls-long" style="width:${longPct}%"></div><div class="ls-short" style="flex:1"></div></div>`
+    : `<div class="long-short-bar" style="flex:1;opacity:0.3"><div class="ls-long" style="width:50%"></div><div class="ls-short" style="flex:1"></div></div>`;
+
+  const netLabel = !hasData ? 'no live data'
+    : net === 0 ? 'balanced'
+    : `$${(Math.abs(net)/1e6).toFixed(0)}M ${net > 0 ? 'net long' : 'net short'}`;
+  const netColor = !hasData ? 'var(--muted)' : net >= 0 ? 'var(--green)' : 'var(--red)';
+
   el.innerHTML = `
     <div class="wlt-panel-hdr">Smart Money Positioning <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:6px">${s.n_traders?.toLocaleString()} wallets · $${gross}M gross</span></div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-      <span style="font-size:11px;color:var(--green)">${longPct}% Long</span>
-      <div class="long-short-bar" style="flex:1"><div class="ls-long" style="width:${longPct}%"></div><div class="ls-short" style="flex:1"></div></div>
-      <span style="font-size:11px;color:var(--red)">${shortPct}% Short</span>
+      <span style="font-size:11px;color:var(--green)">${longPct != null ? longPct+'%' : '—'} Long</span>
+      ${barHtml}
+      <span style="font-size:11px;color:var(--red)">${shortPct != null ? shortPct+'%' : '—'} Short</span>
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Net exposure: <span style="color:${net>0?'var(--green)':'var(--red)'};font-weight:600">$${(Math.abs(net)/1e6).toFixed(0)}M ${net>0?'net long':'net short'}</span></div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Net exposure: <span style="color:${netColor};font-weight:600">${netLabel}</span></div>
     <div style="font-size:10px;color:var(--muted);margin-bottom:5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Top longs</div>
     <div class="market-chips" style="margin-bottom:10px">
       ${topLongs.map(m=>`<span class="mkt-chip long">${m.symbol} ${m.long_share_pct?.toFixed(0)}%↑</span>`).join('')}
