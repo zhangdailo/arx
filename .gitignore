@@ -1,3 +1,7 @@
 local-config.js
 ../arx_config.py
 arx_keys.js
+
+.zsh_secrets
+.env
+wallet_identities.json

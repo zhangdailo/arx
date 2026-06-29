@@ -1286,6 +1286,7 @@
   </style>
 <!-- Local config: gitignored, only present on your machine. Sets window.LUCID_API_KEY. -->
 <script src="local-config.js" onerror="void 0"></script>
+<script src="arx-identity-join.js" onerror="void 0"></script>
 </head>
 <body>
 
@@ -1521,6 +1522,7 @@
     <div class="filter-row" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div class="chips" id="feedChips">
         <button class="chip active" data-ff="all">All Signals</button>
+        <button class="chip" data-ff="kol">🐋 KOL Whales</button>
         <button class="chip" data-ff="Elite">Elite Only</button>
         <button class="chip" data-ff="long">Longs</button>
         <button class="chip" data-ff="short">Shorts</button>
@@ -2163,6 +2165,9 @@
           <div class="whale-stat-sub">Lookonchain / ai_9684xtpa</div>
         </div>
       </div>
+
+      <!-- ARX identity block: filled by selectWhaleWallet via ARXIdentity.whaleIdentityBlock -->
+      <div id="whale-identity-block" style="margin-bottom:10px"></div>
 
       <!-- Two-column: portfolio + balance history -->
       <div class="whale-two-col">
@@ -3379,6 +3384,7 @@ let curFilter = 'all';
 let curSort   = { k: 'allTime.pnl', d: -1 };
 let shown     = 100;
 let feedF     = 'all';
+let watchedCoins = new Set(JSON.parse(localStorage.getItem('arxWatchedCoins') || '[]'));
 let liveEnabled = true;
 let apilabActive = false;
 
@@ -3776,7 +3782,9 @@ function updateStats() {
   $('st-proven').textContent  = Proven.toLocaleString();
   $('st-verified').textContent= Verified.toLocaleString();
   $('st-rising').textContent  = Rising.toLocaleString();
-  $('st-kol').textContent     = kolList.length ? kolList.length.toLocaleString() : kols.toLocaleString();
+  const arxLayer2 = typeof ARXIdentity !== 'undefined'
+    ? traders.filter(t => t.identity && t.identity.source === 'hyperbot').length : 0;
+  $('st-kol').textContent     = ((kolList.length || kols) + arxLayer2).toLocaleString();
 }
 
 // ── Get filtered + sorted traders ──────────────────────
@@ -3858,14 +3866,14 @@ function renderTable() {
     const instB    = instBadge(t.address);
     const instS    = instStrip(t.address);
 
-    return `<tr${instB ? ' style="background:rgba(179,141,244,.03)"' : ''}>
+    return `<tr data-address="${t.address}"${instB ? ' style="background:rgba(179,141,244,.03)"' : ''}>
       <td class="rnk">${i+1}</td>
       <td><div class="tid">
         <div class="tid-name">${name}${kolTag}${instB}</div>
         ${handle}${commLabel}${instS}
         <div class="tid-addr">${shortAddr(t.address)}</div>
       </div></td>
-      <td>${badgeHtml(t.badge)}</td>
+      <td>${typeof ARXIdentity !== 'undefined' ? ARXIdentity.badgeHTML(t) : badgeHtml(t.badge)}</td>
       <td>${pnlSpan(t.allTime.pnl)}</td>
       <td>${roiSpan(t.allTime.roi)}</td>
       <td>${pnlSpan(t['30d'].pnl)}</td>
@@ -4056,20 +4064,36 @@ function buildOI() {
   }).join('');
 }
 
+// ── Watch coin persistence ───────────────────────────────
+function toggleWatchCoin(coin) {
+  if (watchedCoins.has(coin)) watchedCoins.delete(coin);
+  else watchedCoins.add(coin);
+  localStorage.setItem('arxWatchedCoins', JSON.stringify([...watchedCoins]));
+  buildFeed();
+}
+
 // ── Build Home Feed ─────────────────────────────────────
 function buildFeed() {
   const cards = [];
   for (const [addr, pos] of livePos) {
     const t = traders.find(x => x.address===addr);
     if (!t) continue;
+    const isKol = t.kol || (t.identity && t.identity.source === 'kol');
+    const hasId = isKol || (t.identity && t.identity.source === 'hyperbot');
     for (const p of pos) {
       if (feedF==='Elite' && t.badge!=='Elite') continue;
       if (feedF==='long'  && p.side!=='long')   continue;
       if (feedF==='short' && p.side!=='short')  continue;
-      cards.push({t, p, addr});
+      if (feedF==='kol'   && !isKol)            continue;
+      cards.push({t, p, addr, isKol, hasId});
     }
   }
-  cards.sort((a,b) => b.p.notional - a.p.notional);
+  // KOL/identity cards float to the top, then sort by notional
+  cards.sort((a,b) => {
+    if (a.isKol !== b.isKol) return a.isKol ? -1 : 1;
+    if (a.hasId !== b.hasId) return a.hasId ? -1 : 1;
+    return b.p.notional - a.p.notional;
+  });
 
   const grid = $('feedGrid');
   if (!cards.length) {
@@ -4077,13 +4101,108 @@ function buildFeed() {
     return;
   }
 
-  grid.innerHTML = cards.slice(0,60).map(({t,p,addr}) => {
-    const name = t.displayName || (t.handle ? '@'+t.handle : shortAddr(addr));
-    const av = ini(t.displayName || t.handle || addr);
+  // ── KOL Whale Signal banner (top-of-feed, only when KOL positions exist) ──
+  const kolCards = cards.filter(c => c.isKol && c.p.notional >= 50000);
+  let bannerHtml = '';
+  if (kolCards.length > 0) {
+    // Group by coin to show consensus
+    const coinMap = new Map();
+    for (const {t, p} of kolCards) {
+      if (!coinMap.has(p.coin)) coinMap.set(p.coin, {longs:[], shorts:[]});
+      const entry = coinMap.get(p.coin);
+      const label = t.identity ? t.identity.label : (t.handle ? '@'+t.handle : shortAddr(t.address));
+      (p.side==='long' ? entry.longs : entry.shorts).push({label, notional: p.notional, trust: t.trust});
+    }
+    const coinRows = [...coinMap.entries()]
+      .sort((a,b) => (b[1].longs.length + b[1].shorts.length) - (a[1].longs.length + a[1].shorts.length))
+      .slice(0, 6)
+      .map(([coin, {longs, shorts}]) => {
+        const watched = watchedCoins.has(coin);
+        const watchBtn = `<button onclick="toggleWatchCoin('${esc(coin)}')"
+          style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid ${watched?'var(--accent)':'var(--border)'};
+          background:${watched?'var(--accent)':'transparent'};color:${watched?'#fff':'var(--muted)'};cursor:pointer;margin-left:6px;">
+          ${watched ? '👁 Watching' : 'Watch'}</button>`;
+        const longPart  = longs.length  ? `<span style="color:#14B87B">▲${longs.length}L</span> ${longs.map(x=>esc(x.label)).join(', ')}` : '';
+        const shortPart = shorts.length ? `<span style="color:#FF4D6A">▼${shorts.length}S</span> ${shorts.map(x=>esc(x.label)).join(', ')}` : '';
+        return `<div style="display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <span style="font-weight:700;min-width:52px;color:var(--frost)">${esc(coin)}</span>
+          <span style="font-size:12px;color:var(--muted-hi);flex:1">${[longPart,shortPart].filter(Boolean).join(' · ')}</span>
+          ${watchBtn}
+        </div>`;
+      }).join('');
+
+    bannerHtml = `<div style="grid-column:1/-1;background:rgba(124,91,255,0.07);border:1px solid rgba(124,91,255,0.25);
+      border-radius:10px;padding:12px 16px;margin-bottom:4px">
+      <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px">
+        🐋 KOL Whale Positions · Live</div>
+      ${coinRows}
+    </div>`;
+  }
+
+  // ── Watched coin alert strip ─────────────────────────────
+  let watchedHtml = '';
+  if (watchedCoins.size > 0) {
+    const alerts = [];
+    for (const coin of watchedCoins) {
+      const kolInCoin = cards.filter(c => c.p.coin === coin && c.isKol);
+      if (kolInCoin.length === 0) continue;
+      const longs  = kolInCoin.filter(c => c.p.side==='long').length;
+      const shorts = kolInCoin.filter(c => c.p.side==='short').length;
+      const bias   = longs > shorts ? `${longs}L` : shorts > longs ? `${shorts}S` : `${longs}L ${shorts}S`;
+      const color  = longs > shorts ? '#14B87B' : longs < shorts ? '#FF4D6A' : 'var(--muted-hi)';
+      alerts.push(`<span style="color:${color};font-weight:600">${esc(coin)} ${bias}</span>`);
+    }
+    if (alerts.length) {
+      watchedHtml = `<div style="grid-column:1/-1;font-size:12px;padding:8px 12px;background:rgba(20,184,123,0.07);
+        border:1px solid rgba(20,184,123,0.2);border-radius:8px;margin-bottom:4px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:10px;font-weight:700;color:#14B87B;text-transform:uppercase;letter-spacing:0.07em">👁 Watching</span>
+        ${alerts.join(' &nbsp;·&nbsp; ')}
+      </div>`;
+    }
+  }
+
+  const trustColors = {verified:'#1D9E75', caution:'#BA7517', contradicted:'#A32D2D', unrated:'#888780'};
+  const trustLabels = {verified:'✓ verified', caution:'⚠ caution', contradicted:'✗ contradicted', unrated:'—'};
+
+  const cardHtml = cards.slice(0,60).map(({t, p, addr, isKol}) => {
+    const name    = t.displayName || (t.handle ? '@'+t.handle : shortAddr(addr));
+    const av      = ini(t.displayName || t.handle || addr);
     const upnlCls = p.upnl>=0 ? 'g' : 'r';
     const upnlTxt = (p.upnl>=0?'+':'')+money(p.upnl)+' uPnL';
     const levTxt  = p.lev>1 ? num(p.lev,0)+'x lev' : '1x';
-    return `<div class="fc">
+
+    // Identity / trust strip
+    const id    = t.identity;
+    const trust = t.trust || 'unrated';
+    const tColor = trustColors[trust] || '#888780';
+    let idStrip = '';
+    if (id) {
+      const strike = id.contradicted ? 'text-decoration:line-through;opacity:0.55;' : '';
+      const sVal  = t.sharpe      != null ? `Sharpe ${t.sharpe.toFixed(2)}`              : null;
+      const ddVal = t.maxDrawdown != null ? `DD -${t.maxDrawdown.toFixed(0)}%` : 'no DD';
+      const nums  = [sVal, ddVal].filter(Boolean).join(' · ');
+      idStrip = `<div style="margin-top:5px;padding:5px 8px;background:rgba(0,0,0,0.18);border-radius:6px;
+        border-left:2px solid ${tColor}">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:600;${strike}">${esc(id.label)}</span>
+          ${isKol ? '<span style="font-size:9px;padding:1px 5px;background:rgba(124,91,255,0.2);color:#a78bfa;border-radius:3px">KOL</span>' : ''}
+          <span style="font-size:10px;color:${tColor};margin-left:auto">${trustLabels[trust]||''}</span>
+        </div>
+        <div style="font-size:10px;color:${tColor};margin-top:2px">${nums}</div>
+      </div>`;
+    } else if (isKol) {
+      idStrip = `<div style="margin-top:5px;padding:3px 8px;background:rgba(124,91,255,0.08);border-radius:6px;
+        font-size:10px;color:#a78bfa">KOL · ${trustLabels[trust]||'—'}
+        ${t.sharpe != null ? ' · Sharpe '+t.sharpe.toFixed(2) : ''}</div>`;
+    }
+
+    const watched   = watchedCoins.has(p.coin);
+    const watchBtn  = `<button onclick="toggleWatchCoin('${esc(p.coin)}')"
+      style="font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid ${watched?'var(--accent)':'var(--border)'};
+      background:${watched?'var(--accent)':'transparent'};color:${watched?'#fff':'var(--muted)'};cursor:pointer;">
+      ${watched ? '👁' : 'Watch'}</button>`;
+
+    return `<div class="fc" style="${isKol ? 'border-color:rgba(124,91,255,0.4)' : ''}">
       <div class="fc-hdr">
         <div class="fc-trader">
           <div class="avatar">${av}</div>
@@ -4094,8 +4213,10 @@ function buildFeed() {
         </div>
         <span style="font-size:10px;color:var(--green);font-family:'Inter',sans-serif;background:var(--green-lo);padding:2px 7px;border-radius:4px">LIVE</span>
       </div>
-      <div class="fc-action">
-        Holding <span class="a-${p.side}">${p.side.toUpperCase()}</span> ${esc(p.coin)}
+      ${idStrip}
+      <div class="fc-action" style="margin-top:6px;display:flex;align-items:center;justify-content:space-between">
+        <span>Holding <span class="a-${p.side}">${p.side.toUpperCase()}</span> ${esc(p.coin)}</span>
+        ${watchBtn}
       </div>
       <div class="fc-meta">
         <div class="mi">${levTxt}</div>
@@ -4105,6 +4226,8 @@ function buildFeed() {
       </div>
     </div>`;
   }).join('');
+
+  grid.innerHTML = bannerHtml + watchedHtml + cardHtml;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -7102,6 +7225,17 @@ function initWhales() {
 function selectWhaleWallet(idx) {
   curWhaleIdx = idx;
   document.querySelectorAll('.wt-tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  // Layer 3: identity + trust verdict above Portfolio Holdings card
+  const wiEl = $('whale-identity-block');
+  if (wiEl && typeof ARXIdentity !== 'undefined') {
+    const ws = idx === 3 ? WHALE_WALLETS : [WHALE_WALLETS[idx]];
+    wiEl.innerHTML = ws.map(w => {
+      const matched = traders.find(tr => tr.address.toLowerCase() === w.address.toLowerCase());
+      return ARXIdentity.whaleIdentityBlock(
+        matched || { address: w.address, sharpe: null, maxDrawdown: null, trust: 'unrated', identity: null }
+      );
+    }).join('');
+  }
   updateWhaleStats();
   renderWhalePortStatic();
   renderWhaleChartStatic();
@@ -9844,6 +9978,29 @@ function initParaplanner() {
   ppRender();
 }
 
+// ── ARX Identity: layers 2 + 3 ───────────────────────────
+// Called after fetchKOL(). Layer 1 labels (KOL handles) always win.
+// - Layer 2: fills .identity from wallet_identities.json for unlabelled wallets.
+// - Layer 3: stamps .trust on every trader (verified/caution/contradicted/unrated)
+//            based on live Sharpe and maxDrawdown.
+async function _arxApplyLayers() {
+  if (typeof ARXIdentity === 'undefined' || !traders.length) return;
+  await ARXIdentity.enrich(traders);
+  // Layer 1 guard: restore KOL handle as the winning label wherever fetchKOL matched.
+  for (const t of traders) {
+    if (t.kol && (t.twitterName || t.handle)) {
+      t.identity = {
+        label:        t.twitterName || t.handle,
+        labelRaw:     t.twitterName || t.handle,
+        source:       'kol',
+        trusted:      t.trust === 'verified',
+        contradicted: t.trust === 'contradicted',
+      };
+    }
+  }
+  updateStats(); renderTable();
+}
+
 // ── Init ─────────────────────────────────────────────────
 (async () => {
   // Finnhub starts immediately — parallel with HL data, no dependency
@@ -9854,6 +10011,7 @@ function initParaplanner() {
   if (!ok) return;
   await fetchKOL();
   injectInstitutionTraders(); // inject after KOL so kolList already exists
+  await _arxApplyLayers();   // layer 2 (Hyperbot identities) + layer 3 (trust scores)
   await fetchPositions();
   // Refresh flows after positions load
   if (flowsActive) renderFlows();
@@ -10119,6 +10277,7 @@ async function lucidBootstrapData() {
       await fetchKOL();   // fills kolList[] — wallet + social (handle, twitterName)
     } catch(e) {}
   }
+  if (typeof ARXIdentity !== 'undefined' && traders.length) { await _arxApplyLayers(); }
 
   // 2. HL live data — perps, OI, funding rates
   if (!pulseRaw.length) {
