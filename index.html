@@ -139,6 +139,31 @@
     }
     .rss-src-chip.active { background: var(--violet-lo); color: var(--violet); border-color: rgba(179,141,244,0.35); }
     .rss-src-chip:hover:not(.active) { color: var(--frost); border-color: rgba(255,255,255,0.12); }
+    /* Unified News Feed */
+    .news-hero {
+      display: grid; grid-template-columns: 1.1fr 1fr;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; cursor: pointer; transition: border-color .15s, transform .1s;
+      margin-bottom: 4px;
+    }
+    .news-hero:hover { border-color: rgba(179,141,244,.4); transform: translateY(-1px); }
+    .news-hero-img { background-size: cover; background-position: center; min-height: 200px; }
+    .news-hero-body { padding: 18px 20px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
+    .news-hero-title { font-size: 15px; font-weight: 700; color: var(--frost); line-height: 1.45; }
+    .news-hero-desc { font-size: 12px; color: var(--muted); line-height: 1.55; margin-top: 4px; }
+    .news-card-img { width: 100%; height: 110px; background-size: cover; background-position: center; border-radius: 7px; margin-bottom: 6px; flex-shrink: 0; }
+    .news-src-chip {
+      padding: 2px 9px; border-radius: 20px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); font-size: 9px; font-weight: 700;
+      cursor: pointer; transition: all .15s; font-family: 'Plus Jakarta Sans', sans-serif;
+      text-transform: uppercase; letter-spacing: .04em; white-space: nowrap;
+    }
+    .news-src-chip.active { background: var(--violet-lo); color: var(--violet); border-color: rgba(179,141,244,.35); }
+    .news-src-chip:hover:not(.active) { color: var(--frost); border-color: rgba(255,255,255,.12); }
+    @media (max-width: 640px) {
+      .news-hero { grid-template-columns: 1fr; }
+      .news-hero-img { min-height: 150px; }
+    }
     /* Article Reader Modal */
     #articleReaderModal { animation: fadeInModal 0.18s ease; }
     @keyframes fadeInModal { from { opacity:0 } to { opacity:1 } }
@@ -1532,20 +1557,9 @@
         <button class="chip active" id="feedNewsBtn" onclick="toggleFeedNews(this)">Market Intel</button>
       </div>
     </div>
-    <!-- Finnhub News Grid (collapsible) -->
-    <div id="feedNewsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px">
-      <div class="news-section-hdr">📰 Market Intelligence · Finnhub</div>
-      <div style="color:var(--muted);font-size:12px;padding:8px">Loading market news…</div>
-    </div>
-    <!-- RSS Source Filter -->
-    <div id="rssSourceFilter" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;padding:2px 0;align-items:center">
-      <span style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-right:2px">Feeds:</span>
-      <button class="rss-src-chip active" data-src="all" onclick="setRssFilter('all')">All Sources</button>
-    </div>
-    <!-- RSS News Grid -->
-    <div id="rssNewsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-bottom:16px">
-      <div class="news-section-hdr" style="grid-column:1/-1">📡 Crypto News · Live RSS Feeds</div>
-      <div style="color:var(--muted);font-size:12px;padding:8px;grid-column:1/-1"><span class="spin"></span> Fetching 12 sources…</div>
+    <!-- Unified News Feed -->
+    <div id="unifiedNewsFeed" style="margin-bottom:16px">
+      <div style="color:var(--muted);font-size:12px;padding:16px;text-align:center"><span class="spin"></span> Loading news…</div>
     </div>
     <div class="feed-grid" id="feedGrid">
       <div style="grid-column:1/-1" class="empty"><span class="spin"></span> Building signal feed…</div>
@@ -3046,44 +3060,22 @@ async function loadFinnhubNews() {
 }
 
 let _feedNewsVisible = true;
+let _newsSourceFilter = 'all';
 function toggleFeedNews(btn) {
   _feedNewsVisible = !_feedNewsVisible;
-  const grid = document.getElementById('feedNewsGrid');
-  if (grid) grid.style.display = _feedNewsVisible ? 'grid' : 'none';
+  const el = document.getElementById('unifiedNewsFeed');
+  if (el) el.style.display = _feedNewsVisible ? 'block' : 'none';
   btn.classList.toggle('active', _feedNewsVisible);
+}
+function setNewsSrcFilter(src) {
+  _newsSourceFilter = src;
+  document.querySelectorAll('.news-src-chip').forEach(c => c.classList.toggle('active', c.dataset.src === src));
+  renderUnifiedNewsFeed();
 }
 
 function renderFeedNews(items) {
-  const grid = document.getElementById('feedNewsGrid');
-  if (!grid) return;
-  if (!items.length) {
-    grid.innerHTML = '<div class="news-section-hdr">📰 Market Intelligence · Finnhub</div><div style="color:var(--muted);font-size:12px;padding:8px">No news available</div>';
-    return;
-  }
-  const relTime = ts => {
-    const diff = Math.floor((Date.now()/1000) - ts);
-    if (diff < 60) return diff + 's ago';
-    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
-    if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
-    return Math.floor(diff/86400) + 'd ago';
-  };
-  const sentLabel = s => {
-    if (!s) return '';
-    const score = s.score ?? 0;
-    if (score > 0.1)  return '<span class="news-card-sent sent-pos">▲ Bullish</span>';
-    if (score < -0.1) return '<span class="news-card-sent sent-neg">▼ Bearish</span>';
-    return '<span class="news-card-sent sent-neu">◆ Neutral</span>';
-  };
-  grid.innerHTML = '<div class="news-section-hdr">📰 Market Intelligence · Finnhub <span style="font-weight:400;color:var(--muted)">· ' + items.length + ' stories</span></div>'
-    + items.map(n => `
-    <div class="news-card" onclick="window.open('${n.url}','_blank')">
-      <div class="news-card-hdr">
-        <span class="news-card-src">${(n.source||'news').slice(0,20)}</span>
-        <span class="news-card-time">${relTime(n.datetime)}</span>
-      </div>
-      <div class="news-card-title">${n.headline||'Untitled'}</div>
-      ${sentLabel(n.sentiment)}
-    </div>`).join('');
+  // Legacy hook — unified feed now handles rendering
+  renderUnifiedNewsFeed();
 }
 
 // ── RSS NEWS FEEDS ────────────────────────────────────────
@@ -3202,43 +3194,161 @@ async function loadRssNews(force = false) {
 }
 
 function renderRssNews() {
-  const grid = document.getElementById('rssNewsGrid');
-  if (!grid) return;
+  // Legacy hook — unified feed now handles rendering
+  renderUnifiedNewsFeed();
+}
 
-  const relTime = ts => {
-    const diff = Math.floor((Date.now() - ts) / 1000);
+// ── CoinGecko trending (lightweight direct fetch) ─────────
+let _cgTrending = [];
+async function fetchCgTrending() {
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/search/trending', { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    const data = await r.json();
+    _cgTrending = (data.coins || []).slice(0, 8).map(c => ({
+      symbol: (c.item.symbol || c.item.id).toUpperCase(),
+      name:   c.item.name,
+      thumb:  c.item.thumb || '',
+      change: c.item.data?.price_change_percentage_24h?.usd ?? null
+    }));
+    renderUnifiedNewsFeed(); // refresh feed with trending
+  } catch(e) {}
+}
+
+// ── Unified News Feed ─────────────────────────────────────
+function renderUnifiedNewsFeed() {
+  const el = document.getElementById('unifiedNewsFeed');
+  if (!el) return;
+
+  const relTime = ms => {
+    // accepts either unix seconds (datetime) or ms (pubDate)
+    const epoch = ms > 1e11 ? ms : ms * 1000;
+    const diff = Math.floor((Date.now() - epoch) / 1000);
     if (diff < 60)    return diff + 's ago';
     if (diff < 3600)  return Math.floor(diff / 60)   + 'm ago';
     if (diff < 86400) return Math.floor(diff / 3600)  + 'h ago';
     return Math.floor(diff / 86400) + 'd ago';
   };
 
-  const items = _rssFilter === 'all'
-    ? rssNewsCache
-    : rssNewsCache.filter(it => it.source === _rssFilter);
+  // Normalize Finnhub items
+  const fhItems = fhNewsCache.slice(0, 40).map(n => ({
+    title:       n.headline || 'Untitled',
+    link:        n.url || '',
+    image:       n.image || '',
+    source:      (n.source || 'Finnhub').slice(0, 20),
+    sourceColor: '#a78bfa',
+    time:        n.datetime ? n.datetime * 1000 : 0,
+    timeStr:     n.datetime ? relTime(n.datetime) : '',
+    description: '',
+    sentScore:   n.sentiment?.score ?? null
+  })).filter(n => n.link && n.title !== 'Untitled');
 
-  const shown = items.slice(0, 40);
+  // Normalize RSS items
+  const rssItems = rssNewsCache.slice(0, 60).map(n => ({
+    title:       n.title || 'Untitled',
+    link:        n.link || '',
+    image:       n.image || '',
+    source:      n.source || 'RSS',
+    sourceColor: n.sourceColor || '#60a5fa',
+    time:        n.pubDate || 0,
+    timeStr:     n.pubDate ? relTime(n.pubDate) : '',
+    description: n.description || '',
+    sentScore:   null
+  })).filter(n => n.link && n.title !== 'Untitled');
 
-  if (!shown.length) {
-    grid.innerHTML = `<div class="news-section-hdr" style="grid-column:1/-1">📡 Crypto News · Live RSS Feeds</div><div style="color:var(--muted);font-size:12px;padding:8px;grid-column:1/-1">No stories available${_rssFilter !== 'all' ? ` for ${_rssFilter}` : ''}.</div>`;
+  // Merge, dedupe, filter by source
+  const seen = new Set();
+  let all = [...fhItems, ...rssItems].filter(n => {
+    const key = n.title.slice(0, 22).toLowerCase().replace(/\s+/g, '');
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).sort((a, b) => b.time - a.time);
+
+  if (_newsSourceFilter !== 'all') all = all.filter(n => n.source === _newsSourceFilter);
+
+  if (!all.length) {
+    const isLoading = !fhNewsCache.length && !rssNewsCache.length;
+    el.innerHTML = isLoading
+      ? '<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center"><span class="spin"></span> Loading news…</div>'
+      : '<div style="color:var(--muted);font-size:12px;padding:20px;text-align:center">No stories found.</div>';
     return;
   }
 
-  grid.innerHTML = `<div class="news-section-hdr" style="grid-column:1/-1">📡 Crypto News · Live RSS Feeds <span style="font-weight:400;color:var(--muted)">· ${shown.length} stories · ${_rssFilter === 'all' ? RSS_SOURCES.length + ' sources' : _rssFilter}</span></div>`
-    + shown.map(n => {
-        // Escape for inline onclick attribute
-        const safeUrl   = n.link.replace(/'/g, '%27');
-        const safeTitle = n.title.replace(/'/g, '&#39;').replace(/"/g, '&quot;').slice(0, 200);
-        return `<div class="news-card" onclick="openArticleReader('${safeUrl}','${safeTitle}','${n.source}',${n.pubDate})">
-          ${n.image ? `<div style="width:100%;height:110px;background:url('${n.image.replace(/'/g,'%27')}') center/cover;border-radius:7px;margin-bottom:6px;flex-shrink:0"></div>` : ''}
-          <div class="news-card-hdr">
-            <span class="news-card-src" style="color:${n.sourceColor}">${n.source}</span>
-            <span class="news-card-time">${relTime(n.pubDate)}</span>
-          </div>
-          <div class="news-card-title">${n.title.replace(/</g,'&lt;')}</div>
-          ${n.description ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:3px">${n.description.replace(/</g,'&lt;').slice(0,130)}…</div>` : ''}
+  // ── Trending strip ───────────────────────────────────────
+  let trendingHtml = '';
+  if (_cgTrending.length) {
+    trendingHtml = `<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:8px 0 12px;border-bottom:1px solid rgba(255,255,255,0.06);margin-bottom:14px">
+      <span style="font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap">🔥 Trending</span>
+      ${_cgTrending.map(t => {
+        const col    = t.change == null ? 'var(--muted)' : t.change >= 0 ? '#10b981' : '#ef4444';
+        const chgStr = t.change != null ? ` <span style="color:${col}">${t.change >= 0 ? '+' : ''}${t.change.toFixed(1)}%</span>` : '';
+        return `<div onclick="openTechnicalChart('${t.symbol}')" title="View ${t.symbol} chart"
+          style="display:flex;align-items:center;gap:5px;background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;color:var(--frost);cursor:pointer;transition:background .15s"
+          onmouseover="this.style.background='rgba(52,211,153,0.18)'" onmouseout="this.style.background='rgba(52,211,153,0.07)'">
+          ${t.thumb ? `<img src="${t.thumb}" style="width:13px;height:13px;border-radius:50%;flex-shrink:0" onerror="this.style.display='none'">` : ''}
+          <span style="color:#34d399">${t.symbol}</span>${chgStr}
         </div>`;
-      }).join('');
+      }).join('')}
+    </div>`;
+  }
+
+  // ── Source filter chips ──────────────────────────────────
+  const sources = [...new Set(all.map(n => n.source))].slice(0, 14);
+  const srcChips = `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+    <button class="news-src-chip ${_newsSourceFilter === 'all' ? 'active' : ''}" data-src="all" onclick="setNewsSrcFilter('all')">All</button>
+    ${sources.map(s => `<button class="news-src-chip ${_newsSourceFilter === s ? 'active' : ''}" data-src="${s}" onclick="setNewsSrcFilter('${s.replace(/'/g,'&#39;')}')">${s}</button>`).join('')}
+    <span style="font-size:10px;color:var(--muted);margin-left:4px">${all.length} stories</span>
+  </div>`;
+
+  // ── Hero card (first item with image, else first item) ───
+  const heroIdx = all.findIndex(n => n.image);
+  const hero    = heroIdx >= 0 ? all[heroIdx] : all[0];
+  const rest    = all.filter((_, i) => i !== (heroIdx >= 0 ? heroIdx : 0)).slice(0, 35);
+
+  const sentBadge = score => {
+    if (score == null) return '';
+    if (score > 0.1)  return '<span class="news-card-sent sent-pos">▲ Bullish</span>';
+    if (score < -0.1) return '<span class="news-card-sent sent-neg">▼ Bearish</span>';
+    return '';
+  };
+
+  const safeHeroUrl   = hero.link.replace(/'/g, '%27');
+  const safeHeroTitle = hero.title.replace(/'/g,"&#39;").replace(/"/g,'&quot;').slice(0, 200);
+
+  const heroHtml = `<div class="news-hero" onclick="openArticleReader('${safeHeroUrl}','${safeHeroTitle}','${hero.source}',${hero.time})" style="${!hero.image ? 'grid-template-columns:1fr' : ''}">
+    ${hero.image ? `<div class="news-hero-img" style="background-image:url('${hero.image.replace(/'/g,'%27')}')"></div>` : ''}
+    <div class="news-hero-body">
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+          <span class="news-card-src" style="color:${hero.sourceColor};font-size:11px">${hero.source}</span>
+          <span class="news-card-time">${hero.timeStr}</span>
+        </div>
+        <div class="news-hero-title">${hero.title.replace(/</g,'&lt;')}</div>
+        ${hero.description ? `<div class="news-hero-desc">${hero.description.replace(/</g,'&lt;').slice(0,220)}…</div>` : ''}
+      </div>
+      ${sentBadge(hero.sentScore)}
+    </div>
+  </div>`;
+
+  // ── Card grid ────────────────────────────────────────────
+  const gridHtml = rest.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;margin-top:10px">
+    ${rest.map(n => {
+      const safeUrl   = n.link.replace(/'/g,'%27');
+      const safeTitle = n.title.replace(/'/g,"&#39;").replace(/"/g,'&quot;').slice(0,200);
+      return `<div class="news-card" onclick="openArticleReader('${safeUrl}','${safeTitle}','${n.source}',${n.time})">
+        ${n.image ? `<div class="news-card-img" style="background-image:url('${n.image.replace(/'/g,'%27')}')"></div>` : ''}
+        <div class="news-card-hdr">
+          <span class="news-card-src" style="color:${n.sourceColor}">${n.source}</span>
+          <span class="news-card-time">${n.timeStr}</span>
+        </div>
+        <div class="news-card-title">${n.title.replace(/</g,'&lt;')}</div>
+        ${n.description && !n.image ? `<div style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:3px">${n.description.replace(/</g,'&lt;').slice(0,120)}…</div>` : ''}
+        ${sentBadge(n.sentScore)}
+      </div>`;
+    }).join('')}
+  </div>` : '';
+
+  el.innerHTML = trendingHtml + srcChips + heroHtml + gridHtml;
 }
 
 // ── Article Reader ────────────────────────────────────────
@@ -3435,6 +3545,8 @@ async function initFinnhub() {
 
   // Start RSS feeds in background (doesn't block main init)
   loadRssNews();
+  // CoinGecko trending for news feed header
+  fetchCgTrending();
   // Refresh macro quotes every 30s
   setInterval(loadFinnhubMacro, 30000);
   // Refresh stocks every 30s — only re-renders panel if RWA tab active
