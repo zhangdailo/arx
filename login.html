@@ -275,9 +275,9 @@
 const SUPABASE_URL = 'https://howzroiceixtfimrdmjz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_EtYHLj-z2cxh1U5kOyAZCg_f7Cx9gga';
 
-// ── Users ────────────────────────────────────────────────────────────
+// ── Hardcoded fallback users (Supabase arx_users takes priority) ─────
+// Add/remove/reset operators via Citadel Command — no code edits needed
 const USERS = {
-  'dailo':      { hash:'7d6b8e91eb9128d748050682f53be723f0dcebe3933d0d312cbe47ec66c3b520', level:'SUPERHUMAN GOD ACCESS' },
   'dailozhang': { hash:'403774aa7e1635aaf218dc899900238e691ffb21ec1701255840aa614a28fc39', level:'SUPERHUMAN GOD ACCESS' },
   'kelly':      { hash:'7e3a76a029868a7889d40ada5581c3ff71f942a277f01519286489661242cd1a', level:'CITADEL OPERATOR ACCESS' },
   'zephan':     { hash:'e0cf7e57927dba9ddc67e2d165ed3322591de04c9a14fbdc2a574c18f8f12114', level:'CITADEL OPERATOR ACCESS' },
@@ -285,6 +285,20 @@ const USERS = {
   'bernard':    { hash:'de333daec1416be43af09a0290c3dd3aa50a24bcf09f71aee871fe02dc17f277', level:'CITADEL OPERATOR ACCESS' },
   'gary':       { hash:'437902b3e9c0772fad0d8aca9ebaf2ccfd0e67ec9aa5878f3892b3abf4774498', level:'CITADEL OPERATOR ACCESS' },
 };
+
+// ── Supabase user lookup (checks arx_users table first) ──────────────
+async function lookupUserSupabase(uid) {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/arx_users?uid=eq.${encodeURIComponent(uid)}&select=uid,password_hash,level&limit=1`,
+      { headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    return { hash: data[0].password_hash, level: data[0].level };
+  } catch(e) { return null; }
+}
 
 // ── Particle canvas ─────────────────────────────────────────────────
 (function(){
@@ -375,7 +389,9 @@ document.getElementById('loginForm').addEventListener('submit',async e=>{
   if(!uid||!pw){setStatus('ENTER CREDENTIALS','err');return;}
   btn.disabled=true; setStatus('VERIFYING IDENTITY…','info');
   await new Promise(r=>setTimeout(r,850));
-  const user=USERS[uid];
+  // Check Supabase arx_users first; fall back to hardcoded list
+  let user = await lookupUserSupabase(uid);
+  if (!user) user = USERS[uid];
   if(!user){btn.disabled=false;setStatus('ACCESS DENIED — UNKNOWN OPERATOR','err');shakeCard();return;}
   const h=await sha256(pw);
   if(h!==user.hash){btn.disabled=false;setStatus('ACCESS DENIED — INVALID KEY','err');shakeCard();return;}

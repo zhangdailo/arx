@@ -2639,6 +2639,41 @@
         <div id="citadelTimelineRows" style="font-size:11px;color:#9a9aaf;line-height:1.9;max-height:260px;overflow-y:auto;border-left:1px solid rgba(201,168,76,.15);padding-left:14px"></div>
       </div>
 
+      <!-- ── Add / Reset Operator ──────────────────────────────────────── -->
+      <div style="margin-top:36px;padding-top:24px;border-top:1px solid rgba(201,168,76,.15)">
+        <div style="font-size:10px;letter-spacing:.2em;color:rgba(201,168,76,.5);margin-bottom:14px">⬡ ADD / RESET OPERATOR</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(201,168,76,.4);margin-bottom:4px">USERNAME</div>
+            <input id="newOpUid" type="text" placeholder="username" autocomplete="off"
+              style="background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.25);color:#c9a84c;padding:8px 12px;font-size:12px;outline:none;width:150px;letter-spacing:.05em;font-family:inherit" />
+          </div>
+          <div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(201,168,76,.4);margin-bottom:4px">ACCESS KEY</div>
+            <input id="newOpPw" type="password" placeholder="set password" autocomplete="new-password"
+              style="background:rgba(201,168,76,.06);border:1px solid rgba(201,168,76,.25);color:#c9a84c;padding:8px 12px;font-size:12px;outline:none;width:150px;font-family:inherit" />
+          </div>
+          <div>
+            <div style="font-size:9px;letter-spacing:.15em;color:rgba(201,168,76,.4);margin-bottom:4px">LEVEL</div>
+            <select id="newOpLevel"
+              style="background:#0a0010;border:1px solid rgba(201,168,76,.25);color:#c9a84c;padding:8px 12px;font-size:12px;outline:none;font-family:inherit;cursor:pointer">
+              <option value="CITADEL OPERATOR ACCESS">OPERATOR</option>
+              <option value="BOSS — CITADEL COMMAND ACCESS">BOSS</option>
+              <option value="SUPERHUMAN GOD ACCESS">SUPERHUMAN GOD</option>
+            </select>
+          </div>
+          <button onclick="addOperatorSupabase()"
+            style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.35);color:#c9a84c;padding:8px 20px;cursor:pointer;font-size:11px;letter-spacing:.15em;font-family:inherit;transition:background .15s"
+            onmouseover="this.style.background='rgba(201,168,76,.2)'" onmouseout="this.style.background='rgba(201,168,76,.1)'">
+            ⬡ SAVE OPERATOR
+          </button>
+          <span id="addOpStatus" style="font-size:11px;color:rgba(201,168,76,.5);letter-spacing:.05em"></span>
+        </div>
+        <div style="font-size:10px;color:rgba(201,168,76,.3);margin-top:10px;letter-spacing:.04em">
+          Saves to Supabase — operator can log in immediately. Works for new users and password resets.
+        </div>
+      </div>
+
     </div>
   </section>
 
@@ -10862,10 +10897,11 @@ const SUPABASE_KEY_ARX = 'sb_publishable_EtYHLj-z2cxh1U5kOyAZCg_f7Cx9gga';
 // ARX CITADEL — God-mode operator analytics
 // ═══════════════════════════════════════════════════════
 
-// All known operators (mirrors login.html USERS keys + access levels)
+// Seed list — Supabase arx_users is merged in dynamically at render time
+// Add/remove operators via Citadel Command form without touching this file
 const CITADEL_OPERATORS = {
-  'dailo':      { level:'SUPERHUMAN GOD', color:'#c9a84c' },
   'dailozhang': { level:'SUPERHUMAN GOD', color:'#c9a84c' },
+  'valen':      { level:'OPERATOR',       color:'#60a5fa' },
   'kelly':      { level:'OPERATOR',       color:'#60a5fa' },
   'zephan':     { level:'OPERATOR',       color:'#60a5fa' },
   'jefferson':  { level:'BOSS',           color:'#a78bfa' },
@@ -11027,6 +11063,68 @@ async function fetchCitadelDataSupabase() {
   } catch(e) { return null; }
 }
 
+// ── SHA-256 (same algo as login.html) ─────────────────────
+async function sha256Citadel(s){
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
+// ── Fetch Supabase-managed users (arx_users table) ────────
+async function fetchSupabaseUsers(){
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL_ARX}/rest/v1/arx_users?select=uid,level`,
+      { headers:{ 'apikey':SUPABASE_KEY_ARX, 'Authorization':`Bearer ${SUPABASE_KEY_ARX}` } }
+    );
+    if (!r.ok) return {};
+    const rows = await r.json();
+    if (!Array.isArray(rows)) return {};
+    const result = {};
+    rows.forEach(u => { result[u.uid] = { level: u.level }; });
+    return result;
+  } catch(e){ return {}; }
+}
+
+// ── Add / reset operator via Citadel form ─────────────────
+async function addOperatorSupabase(){
+  const uid      = (document.getElementById('newOpUid').value||'').trim().toLowerCase();
+  const pw       = document.getElementById('newOpPw').value;
+  const level    = document.getElementById('newOpLevel').value;
+  const statusEl = document.getElementById('addOpStatus');
+
+  statusEl.style.color = 'rgba(201,168,76,.5)';
+  statusEl.textContent = '';
+
+  if (!uid) { statusEl.textContent = '⚠ enter username'; return; }
+  if (!pw)  { statusEl.textContent = '⚠ enter password'; return; }
+  if (uid.length < 2 || uid.length > 30) { statusEl.textContent = '⚠ username 2-30 chars'; return; }
+
+  statusEl.textContent = 'saving…';
+  const hash = await sha256Citadel(pw);
+
+  try {
+    const r = await fetch(`${SUPABASE_URL_ARX}/rest/v1/arx_users`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY_ARX,
+        'Authorization': `Bearer ${SUPABASE_KEY_ARX}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: JSON.stringify({ uid, password_hash: hash, level })
+    });
+    if (!r.ok) throw new Error((await r.text()).slice(0, 80));
+    statusEl.style.color = '#34d399';
+    statusEl.textContent = `✓ ${uid.toUpperCase()} saved — can log in now`;
+    document.getElementById('newOpUid').value = '';
+    document.getElementById('newOpPw').value  = '';
+    setTimeout(renderCitadelPanel, 1200);
+  } catch(e){
+    statusEl.style.color = '#f87171';
+    statusEl.textContent = '⚠ ' + e.message;
+  }
+}
+
 // ── Main render ────────────────────────────────────────────
 async function renderCitadelPanel(){
   const tBody  = document.getElementById('citadelTblBody');
@@ -11046,9 +11144,21 @@ async function renderCitadelPanel(){
   const noteEl = document.getElementById('citadelNote');
   if (noteEl) noteEl.textContent = usingSupabase ? '✓ Live cross-device data (Supabase)' : '⚠ Data shown is from this browser only';
 
+  // Merge Supabase-managed users (arx_users) into the operator map
+  const sbUsers = await fetchSupabaseUsers();
+  const allOperators = Object.assign({}, CITADEL_OPERATORS);
+  Object.entries(sbUsers).forEach(([uid, u]) => {
+    if (!allOperators[uid]) {
+      const lvl   = u.level === 'SUPERHUMAN GOD ACCESS' ? 'SUPERHUMAN GOD'
+                  : u.level === 'BOSS — CITADEL COMMAND ACCESS' ? 'BOSS' : 'OPERATOR';
+      const color = lvl === 'SUPERHUMAN GOD' ? '#c9a84c' : lvl === 'BOSS' ? '#a78bfa' : '#60a5fa';
+      allOperators[uid] = { level: lvl, color };
+    }
+  });
+
   // Load data for each known operator
-  Object.keys(CITADEL_OPERATORS).forEach(uid => {
-    const meta = CITADEL_OPERATORS[uid];
+  Object.keys(allOperators).forEach(uid => {
+    const meta = allOperators[uid];
     let logins = [];
     if (usingSupabase && sbData[uid]) {
       logins = sbData[uid].logins;
