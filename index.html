@@ -2535,6 +2535,50 @@
         <button onclick="clearBlastLog()" style="padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif" title="Clear log">🗑</button>
       </div>
 
+      <!-- ── Telegram Connect Bar ──────────────────────────────────── -->
+      <div id="tgConfigBar" style="border:1px solid rgba(37,211,102,0.22);border-radius:10px;padding:12px 16px;margin-bottom:16px;background:rgba(37,211,102,0.04)">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:14px">📲</span>
+          <span style="font-size:12px;font-weight:700;color:#25d366;letter-spacing:.02em">Telegram</span>
+          <span id="tgStatusBadge" style="font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.06);color:var(--muted)">not configured</span>
+          <div style="flex:1"></div>
+          <button onclick="toggleTgSetup()" id="tgToggleBtn"
+            style="padding:5px 12px;border-radius:7px;border:1px solid rgba(37,211,102,0.35);background:transparent;color:#25d366;font-size:11px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif">
+            ⚙ Configure
+          </button>
+        </div>
+
+        <!-- Expandable form -->
+        <div id="tgSetupForm" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid rgba(37,211,102,0.15)">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:2;min-width:180px">
+              <div style="font-size:9px;letter-spacing:.15em;color:rgba(37,211,102,.6);margin-bottom:4px">BOT TOKEN</div>
+              <input id="tgTokenInput" type="password" placeholder="paste from @BotFather" autocomplete="off"
+                style="width:100%;box-sizing:border-box;background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.25);color:#e8e0cc;padding:8px 12px;font-size:12px;outline:none;border-radius:7px;font-family:inherit" />
+            </div>
+            <div style="flex:1;min-width:130px">
+              <div style="font-size:9px;letter-spacing:.15em;color:rgba(37,211,102,.6);margin-bottom:4px">CHAT ID</div>
+              <input id="tgChatInput" type="text" placeholder="-100xxxxxxxxx" autocomplete="off"
+                style="width:100%;box-sizing:border-box;background:rgba(37,211,102,.06);border:1px solid rgba(37,211,102,.25);color:#e8e0cc;padding:8px 12px;font-size:12px;outline:none;border-radius:7px;font-family:inherit" />
+            </div>
+            <button onclick="saveTgConfig()"
+              style="padding:8px 16px;border-radius:7px;border:none;background:#25d366;color:#000;font-size:11px;font-weight:800;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap">
+              ✓ Save
+            </button>
+            <button onclick="testTgConfig()" id="tgTestBtn"
+              style="padding:8px 14px;border-radius:7px;border:1px solid rgba(37,211,102,.35);background:transparent;color:#25d366;font-size:11px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap">
+              Test
+            </button>
+          </div>
+          <div id="tgSetupStatus" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+          <div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:8px;line-height:1.6">
+            Get token: Telegram → <strong style="color:rgba(255,255,255,.5)">@BotFather</strong> → /newbot ·
+            Get chat ID: add bot to group → send any message → click Test (auto-detects) ·
+            Blasts fire automatically at 11:00 · 15:00 · 18:00 SGT
+          </div>
+        </div>
+      </div>
+
       <!-- Requirement notice -->
       <div id="blastDataNotice" style="display:none;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:#f59e0b;line-height:1.6">
         ⚠️ <strong>Tip:</strong> Load Trader Radar first (toggle Live Data) to get richer position signals. Without it, Blast uses Hyperliquid market data only.
@@ -9049,6 +9093,9 @@ async function generateNewsWatch() {
   card.innerHTML  = _renderNewsWatchCard(groups, trending, tstr, dstr);
   _newsWatchText  = _formatNewsWatchText(groups, trending, tstr, dstr);
 
+  // ── Send News Watch to Telegram if configured ────────────
+  if (_newsWatchText) sendToTelegram(_newsWatchText).catch(() => {});
+
   if (rBtn) { rBtn.innerHTML = '🔄 Refresh'; rBtn.disabled = false; }
 }
 
@@ -9392,6 +9439,9 @@ function generateBlast(auto = false) {
 
   renderBlastTab();
 
+  // ── Send to Telegram if configured ──────────────────────
+  sendToTelegram(text).catch(() => {});
+
   // Refresh News Watch if it's stale (>5 min) or empty
   if (!_newsWatchText || Date.now() - _newsWatchTsVal > 5 * 60 * 1000) {
     generateNewsWatch().catch(() => {});
@@ -9489,12 +9539,117 @@ function startBlastScheduler() {
   }, 30000); // check every 30s
 }
 
+// ═══════════════════════════════════════════════════════════
+// TELEGRAM INTEGRATION
+// ═══════════════════════════════════════════════════════════
+
+function refreshTgStatus() {
+  const token  = localStorage.getItem('arx_tg_token') || '';
+  const chatId = localStorage.getItem('arx_tg_chatid') || '';
+  const badge  = document.getElementById('tgStatusBadge');
+  if (badge) {
+    if (token && chatId) {
+      badge.textContent = '● connected';
+      badge.style.color = '#25d366';
+      badge.style.background = 'rgba(37,211,102,0.12)';
+    } else {
+      badge.textContent = 'not configured';
+      badge.style.color = 'var(--muted)';
+      badge.style.background = 'rgba(255,255,255,.06)';
+    }
+  }
+  // Pre-fill form inputs if values already saved
+  const tokenInput = document.getElementById('tgTokenInput');
+  const chatInput  = document.getElementById('tgChatInput');
+  if (tokenInput && token) tokenInput.value = token;
+  if (chatInput  && chatId) chatInput.value = chatId;
+}
+
+function toggleTgSetup() {
+  const form = document.getElementById('tgSetupForm');
+  const btn  = document.getElementById('tgToggleBtn');
+  if (!form) return;
+  const isOpen = form.style.display !== 'none';
+  form.style.display = isOpen ? 'none' : 'block';
+  if (btn) btn.textContent = isOpen ? '⚙ Configure' : '✕ Close';
+  if (!isOpen) refreshTgStatus(); // pre-fill inputs when opening
+}
+
+function saveTgConfig() {
+  const tokenInput = document.getElementById('tgTokenInput');
+  const chatInput  = document.getElementById('tgChatInput');
+  const statusEl   = document.getElementById('tgSetupStatus');
+  const token  = (tokenInput?.value || '').trim();
+  const chatId = (chatInput?.value || '').trim();
+  if (!token || !chatId) {
+    if (statusEl) { statusEl.textContent = '⚠ Enter both Bot Token and Chat ID.'; statusEl.style.color = '#f59e0b'; }
+    return;
+  }
+  localStorage.setItem('arx_tg_token', token);
+  localStorage.setItem('arx_tg_chatid', chatId);
+  if (statusEl) { statusEl.textContent = '✓ Saved — click Test to verify connection.'; statusEl.style.color = '#25d366'; }
+  refreshTgStatus();
+}
+
+async function testTgConfig() {
+  const tokenInput = document.getElementById('tgTokenInput');
+  const chatInput  = document.getElementById('tgChatInput');
+  const statusEl   = document.getElementById('tgSetupStatus');
+  const btn        = document.getElementById('tgTestBtn');
+  const token  = (tokenInput?.value || localStorage.getItem('arx_tg_token') || '').trim();
+  const chatId = (chatInput?.value || localStorage.getItem('arx_tg_chatid') || '').trim();
+  if (!token || !chatId) {
+    if (statusEl) { statusEl.textContent = '⚠ Enter token + chat ID first.'; statusEl.style.color = '#f59e0b'; }
+    return;
+  }
+  if (btn) { btn.innerHTML = '<span class="spin"></span>'; btn.disabled = true; }
+  const result = await _tgSend(token, chatId,
+    '🔔 <b>ARX Signal Blast</b> — Telegram connected ✓\n\nThis group will now receive signal blasts and news watch updates automatically.');
+  if (btn) { btn.innerHTML = 'Test'; btn.disabled = false; }
+  if (result.ok) {
+    if (statusEl) { statusEl.textContent = '✓ Test message sent — Telegram connected!'; statusEl.style.color = '#25d366'; }
+    localStorage.setItem('arx_tg_token', token);
+    localStorage.setItem('arx_tg_chatid', chatId);
+    refreshTgStatus();
+  } else {
+    const err = result.data?.description || result.reason || 'Unknown error';
+    if (statusEl) { statusEl.textContent = `✕ ${err}`; statusEl.style.color = '#f87171'; }
+  }
+}
+
+// Core send — used internally
+async function _tgSend(token, chatId, text) {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true })
+    });
+    const data = await r.json();
+    return { ok: !!data.ok, data };
+  } catch(e) {
+    return { ok: false, reason: e.message };
+  }
+}
+
+// Public helper — reads config from localStorage, silently no-ops if unconfigured
+async function sendToTelegram(text) {
+  const token  = localStorage.getItem('arx_tg_token');
+  const chatId = localStorage.getItem('arx_tg_chatid');
+  if (!token || !chatId) return;
+  return _tgSend(token, chatId, text);
+}
+
+// ═══════════════════════════════════════════════════════════
+
 function initBlast() {
   if (blastActive) return;
   blastActive = true;
   // Show notice if no pos data
   const notice = document.getElementById('blastDataNotice');
   if (notice) notice.style.display = livePos.size === 0 ? 'block' : 'none';
+  // Initialise Telegram status badge
+  refreshTgStatus();
   // Render any saved blasts from log
   renderBlastTab();
   // Auto-load News Watch on first open
