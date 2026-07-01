@@ -6232,6 +6232,30 @@ function techResizeCharts() {
   if(showRsi) techRsiChart.resize(re.clientWidth,re.clientHeight);
 }
 
+// Navigate to Technical tab and load a specific coin
+function openTechnicalChart(coin) {
+  // Activate tab UI
+  document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+  const techBtn = document.querySelector('.tab-btn[data-tab="technical"]');
+  if (techBtn) techBtn.classList.add('active');
+  const techPanel = document.getElementById('tab-technical');
+  if (techPanel) techPanel.classList.add('active');
+  // Set the coin
+  techCoin = coin.toUpperCase();
+  if (!techActive) {
+    // initTechnical will pick up techCoin from the variable
+    initTechnical();
+  } else {
+    // Already initialised — just swap the coin
+    const sel = document.getElementById('techCoinSel');
+    if (sel) sel.value = techCoin;
+    loadTechChart(techCoin, techTf);
+    if (typeof updateTechCoinInfo === 'function') updateTechCoinInfo(techCoin);
+    techResizeCharts();
+  }
+}
+
 async function initTechnical() {
   if(techActive)return;
   techActive=true;
@@ -9151,8 +9175,9 @@ function _renderNewsWatchCard(groups, trending, tstr, dstr) {
       const chg = t.data?.price_change_percentage_24h?.usd;
       const chgStr = chg != null ? ` ${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%` : '';
       const chgCol = chg >= 0 ? '#10b981' : '#ef4444';
-      html += `<div style="background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--frost)">
-        #${i+1} <span style="color:#34d399">${(t.symbol||t.id||'?').toUpperCase()}</span>${chgStr ? ` <span style="color:${chgCol}">${chgStr}</span>` : ''}
+      const sym = (t.symbol||t.id||'?').toUpperCase();
+      html += `<div onclick="openTechnicalChart('${sym}')" title="Open ${sym} chart" style="cursor:pointer;background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:var(--frost);transition:background .15s" onmouseover="this.style.background='rgba(52,211,153,0.18)'" onmouseout="this.style.background='rgba(52,211,153,0.07)'">
+        #${i+1} <span style="color:#34d399">${sym}</span>${chgStr ? ` <span style="color:${chgCol}">${chgStr}</span>` : ''}
       </div>`;
     });
     html += `</div></div>`;
